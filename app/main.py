@@ -8,6 +8,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from app.api.routes.analytics import router as analytics_router
 from app.api.routes.contacts import router as contacts_router
 from app.api.routes.conversations import router as conversations_router
+from app.api.routes.dashboard import router as dashboard_router
 from app.api.routes.health import router as health_router
 from app.api.routes.messages import router as messages_router
 from app.api.routes.posts import router as posts_router
@@ -19,7 +20,7 @@ from app.core.logging import configure_logging, get_logger
 configure_logging()
 logger = get_logger(__name__)
 
-##hshhshshshshhshshshsh!!! comit test
+
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     logger.info("application_startup", extra={"environment": settings.app_env})
@@ -95,3 +96,4 @@ app.include_router(messages_router)
 app.include_router(contacts_router)
 app.include_router(posts_router)
 app.include_router(analytics_router)
+app.include_router(dashboard_router)

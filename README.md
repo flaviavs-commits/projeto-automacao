@@ -126,6 +126,7 @@ alembic upgrade head
 
 - `GET /`
 - `GET /health`
+- `GET /dashboard`
 - `GET /contacts`
 - `GET /conversations`
 - `GET /messages`
@@ -139,6 +140,5 @@ alembic upgrade head
 - Base da API, configuracao, logging estruturado, SQLAlchemy e Celery estao preparados.
 - Modelos principais e migracao inicial foram adicionados.
 - Webhook Meta esta pronto para verificacao local e recebimento seguro de payload.
+- Dashboard web inicial para operacao (leads, mensagens e posts) disponivel em `/dashboard`.
 - Integracoes externas e rotinas de publicacao seguem como stubs seguros ate a configuracao de credenciais reais.
-nem precisava disso
-,,,,,,,,,,,,,,,,,    
