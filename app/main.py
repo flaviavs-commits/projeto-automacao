@@ -19,7 +19,7 @@ from app.core.logging import configure_logging, get_logger
 configure_logging()
 logger = get_logger(__name__)
 
-
+##hshhshshshshhshshshsh!!! comit test
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     logger.info("application_startup", extra={"environment": settings.app_env})

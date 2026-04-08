@@ -140,3 +140,5 @@ alembic upgrade head
 - Modelos principais e migracao inicial foram adicionados.
 - Webhook Meta esta pronto para verificacao local e recebimento seguro de payload.
 - Integracoes externas e rotinas de publicacao seguem como stubs seguros ate a configuracao de credenciais reais.
+nem precisava disso
+,,,,,,,,,,,,,,,,,    
