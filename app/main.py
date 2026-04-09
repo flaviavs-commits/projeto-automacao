@@ -14,7 +14,9 @@ from app.api.routes.messages import router as messages_router
 from app.api.routes.posts import router as posts_router
 from app.api.routes.webhooks_meta import router as webhooks_meta_router
 from app.core.config import settings
+from app.core.database import get_database_runtime_state
 from app.core.logging import configure_logging, get_logger
+from app.workers.celery_app import get_queue_runtime_state
 
 
 configure_logging()
@@ -23,7 +25,18 @@ logger = get_logger(__name__)
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
-    logger.info("application_startup", extra={"environment": settings.app_env})
+    db_runtime = get_database_runtime_state()
+    queue_runtime = get_queue_runtime_state()
+    logger.info(
+        "application_startup",
+        extra={
+            "environment": settings.app_env,
+            "database_mode": db_runtime.get("mode"),
+            "database_fallback_reason": db_runtime.get("fallback_reason"),
+            "queue_mode": queue_runtime.get("mode"),
+            "queue_fallback_reason": queue_runtime.get("fallback_reason"),
+        },
+    )
     yield
     logger.info("application_shutdown", extra={"environment": settings.app_env})
 

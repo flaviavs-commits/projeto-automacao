@@ -43,6 +43,11 @@ def _extract_whatsapp_messages(envelope_payload: dict) -> list[dict]:
             if not value:
                 continue
 
+            metadata = value.get("metadata")
+            phone_number_id = None
+            if isinstance(metadata, dict):
+                phone_number_id = str(metadata.get("phone_number_id") or "").strip() or None
+
             messages = value.get("messages") or []
             if not isinstance(messages, list):
                 continue
@@ -89,6 +94,7 @@ def _extract_whatsapp_messages(envelope_payload: dict) -> list[dict]:
                         "message_type": message_type,
                         "text_content": text_content,
                         "media_url": str(media_url) if media_url else None,
+                        "phone_number_id": phone_number_id,
                         "raw_payload": message,
                     }
                 )
@@ -242,7 +248,10 @@ async def receive_meta_webhook(
             external_message_id=external_message_id or None,
             text_content=item.get("text_content"),
             media_url=item.get("media_url"),
-            raw_payload=item.get("raw_payload", {}),
+            raw_payload={
+                **_to_dict(item.get("raw_payload")),
+                "_phone_number_id": item.get("phone_number_id"),
+            },
             ai_generated=False,
         )
         db.add(message)
@@ -257,6 +266,7 @@ async def receive_meta_webhook(
                 "platform": message.platform,
                 "message_type": message.message_type,
                 "external_message_id": message.external_message_id,
+                "phone_number_id": item.get("phone_number_id"),
             }
         )
 

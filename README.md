@@ -71,10 +71,16 @@ Copie `.env.example` para `.env` e ajuste os valores locais. As variaveis suport
 - `REDIS_URL`
 - `META_VERIFY_TOKEN`
 - `META_ACCESS_TOKEN`
+- `META_GRAPH_BASE_URL`
+- `META_API_VERSION`
+- `META_WHATSAPP_PHONE_NUMBER_ID`
+- `INSTAGRAM_BUSINESS_ACCOUNT_ID`
 - `INSTAGRAM_APP_ID`
 - `INSTAGRAM_APP_SECRET`
+- `YOUTUBE_API_KEY`
 - `YOUTUBE_CLIENT_ID`
 - `YOUTUBE_CLIENT_SECRET`
+- `TIKTOK_API_BASE_URL`
 - `TIKTOK_CLIENT_KEY`
 - `TIKTOK_CLIENT_SECRET`
 - `LOCAL_STORAGE_PATH`
@@ -128,9 +134,21 @@ alembic upgrade head
 - `GET /health`
 - `GET /dashboard`
 - `GET /contacts`
+- `GET /contacts/{contact_id}`
+- `POST /contacts`
+- `PATCH /contacts/{contact_id}`
 - `GET /conversations`
+- `GET /conversations/{conversation_id}`
+- `POST /conversations`
+- `PATCH /conversations/{conversation_id}`
 - `GET /messages`
+- `GET /messages/{message_id}`
+- `POST /messages`
+- `PATCH /messages/{message_id}`
 - `GET /posts`
+- `GET /posts/{post_id}`
+- `POST /posts`
+- `PATCH /posts/{post_id}`
 - `GET /analytics`
 - `GET /webhooks/meta`
 - `POST /webhooks/meta`
@@ -141,4 +159,4 @@ alembic upgrade head
 - Modelos principais e migracao inicial foram adicionados.
 - Webhook Meta esta pronto para verificacao local e recebimento seguro de payload.
 - Dashboard web inicial para operacao (leads, mensagens e posts) disponivel em `/dashboard`.
-- Integracoes externas e rotinas de publicacao seguem como stubs seguros ate a configuracao de credenciais reais.
+- Integracoes externas ja possuem adaptadores HTTP reais (WhatsApp/Instagram/TikTok/YouTube), operando com fallback seguro quando faltam credenciais.

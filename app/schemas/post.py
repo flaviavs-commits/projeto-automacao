@@ -1,7 +1,30 @@
 from datetime import datetime
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
+
+
+class PostCreate(BaseModel):
+    platform: str = Field(min_length=1, max_length=50)
+    status: str = Field(default="draft", min_length=1, max_length=50)
+    title: str | None = Field(default=None, max_length=255)
+    caption: str | None = None
+    media_url: str | None = Field(default=None, max_length=500)
+    scheduled_at: datetime | None = None
+    published_at: datetime | None = None
+    external_post_id: str | None = Field(default=None, max_length=255)
+    platform_payload: dict = Field(default_factory=dict)
+
+
+class PostUpdate(BaseModel):
+    status: str | None = Field(default=None, min_length=1, max_length=50)
+    title: str | None = Field(default=None, max_length=255)
+    caption: str | None = None
+    media_url: str | None = Field(default=None, max_length=500)
+    scheduled_at: datetime | None = None
+    published_at: datetime | None = None
+    external_post_id: str | None = Field(default=None, max_length=255)
+    platform_payload: dict | None = None
 
 
 class PostRead(BaseModel):
