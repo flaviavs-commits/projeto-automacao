@@ -277,3 +277,19 @@ Validacoes executadas:
 - `GET /dashboard` respondendo `200`.
 - Webhook de teste em producao criou e enfileirou mensagem.
 - Logs do worker confirmaram processamento de task com `status=completed`.
+
+## Registro de task - 2026-04-09 (commit e deploy final)
+
+Task executada: fechamento da entrega com commit e redeploy dos servicos.
+
+Resumo:
+- Commit realizado em `main`:
+  - `05f59b6`
+  - `feat: operational api, worker pipeline, and railway production setup`
+- API e worker foram redeployados no Railway apos o commit.
+
+Checagens finais:
+- API e worker em `SUCCESS`.
+- `health` em producao com banco e redis ok.
+- `dashboard` publico respondendo `200`.
+- Webhook de teste em producao enfileirou mensagem e worker processou com sucesso.

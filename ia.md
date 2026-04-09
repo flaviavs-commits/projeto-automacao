@@ -333,3 +333,22 @@ Validacoes de producao:
 - Teste E2E do webhook:
   - `POST /webhooks/meta` -> `messages_created=1`, `messages_queued=1`
   - worker processou a task com `status=completed`.
+
+## Registro de task - 2026-04-09 (commit e redeploy final)
+
+Task executada: consolidacao por commit e alinhamento de producao ao commit.
+
+Entregas:
+- Commit criado na branch `main`:
+  - hash: `05f59b6`
+  - mensagem: `feat: operational api, worker pipeline, and railway production setup`
+- Deploy da API (`projeto-automacao`) e do `worker` realizado novamente apos o commit.
+
+Validacao final:
+- Servicos `projeto-automacao` e `worker` em `SUCCESS`.
+- `GET /health` mantendo `status=ok`, `database=ok`, `redis=ok`.
+- `GET /dashboard` retornando `200`.
+- Novo teste E2E via `POST /webhooks/meta` com:
+  - `messages_created=1`
+  - `messages_queued=1`
+- Logs do worker confirmando `process_incoming_message` com `status=completed`.
