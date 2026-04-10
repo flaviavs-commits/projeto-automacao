@@ -86,6 +86,7 @@ def _render_auto_reply(source_text: str) -> str:
 def _resolve_final_job_status(service_status: str) -> str:
     if service_status in {
         "not_configured",
+        "integration_disabled",
         "missing_credentials",
         "invalid_payload",
         "ignored",

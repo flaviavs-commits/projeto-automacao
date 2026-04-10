@@ -293,3 +293,55 @@ Checagens finais:
 - `health` em producao com banco e redis ok.
 - `dashboard` publico respondendo `200`.
 - Webhook de teste em producao enfileirou mensagem e worker processou com sucesso.
+
+## Registro de task - 2026-04-10 (TikTok validado e sincronizado entre servicos)
+
+Task executada: conferencia completa das variaveis no Railway apos login valido.
+
+Resumo:
+- Login Railway confirmado com a conta do usuario.
+- Variaveis TikTok confirmadas na API.
+- `worker` estava sem `TIKTOK_CLIENT_KEY` e `TIKTOK_CLIENT_SECRET`.
+- Credenciais TikTok foram adicionadas no `worker` e confirmadas.
+
+## Registro de task - 2026-04-10 (operacao sem Meta para nao travar o projeto)
+
+Task executada: preparo do backend para continuar operando sem token da Meta.
+
+O que foi feito:
+- Criadas flags de runtime:
+  - `META_ENABLED`
+  - `TIKTOK_ENABLED`
+- Health ganhou visao de integracoes (`meta_runtime_enabled`, `tiktok_runtime_enabled`).
+- Webhook da Meta agora aceita e ignora com seguranca quando Meta estiver desligada.
+- Posts de plataformas Meta entram automaticamente em `pending_meta_review` quando a Meta estiver indisponivel.
+- Posts TikTok entram em `pending_tiktok_setup` se TikTok estiver sem setup.
+- Worker passou a tratar integracao desligada como bloqueio controlado (`blocked_integration`), sem quebrar o fluxo.
+
+Validacao:
+- `compileall` e imports ok.
+- QA completo verde (`PASS=9`, `WARN=0`, `FAIL=0`).
+
+## Registro de task - 2026-04-10 (producao atualizada no Railway)
+
+Task executada: aplicacao de configuracao final e deploy em producao.
+
+Aplicado em `projeto-automacao` e `worker`:
+- `META_ENABLED=false`
+- `TIKTOK_ENABLED=true`
+
+Resultado:
+- Deploy dos dois servicos concluido com `SUCCESS`.
+- `GET /health` em producao confirmado com:
+  - `status=ok`
+  - `meta_enabled=false`
+  - `meta_runtime_enabled=false`
+  - `tiktok_enabled=true`
+  - `tiktok_runtime_enabled=true`
+
+## Estado atual objetivo (2026-04-10)
+
+- Projeto esta operacional em estrategia TikTok-first.
+- Meta ficou em modo desligado intencional ate liberacao oficial de token/permissoes.
+- Fila assincrona (Redis + Celery) esta funcionando em producao.
+- API e dashboard estao estaveis.

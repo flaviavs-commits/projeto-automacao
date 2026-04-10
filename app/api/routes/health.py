@@ -5,6 +5,7 @@ import redis
 
 from app.core.config import settings
 from app.core.database import SessionLocal, get_database_runtime_state
+from app.services.platform_account_service import PlatformAccountService
 from app.workers.celery_app import get_queue_runtime_state
 
 
@@ -17,6 +18,17 @@ def health_check() -> dict:
     redis_status = "unknown"
     database_runtime = get_database_runtime_state()
     queue_runtime = get_queue_runtime_state()
+    cached_meta_credentials = PlatformAccountService().get_latest_meta_credentials()
+    cached_meta_token_ready = bool(str(cached_meta_credentials.get("access_token") or "").strip())
+    cached_instagram_account_ready = bool(
+        str(cached_meta_credentials.get("instagram_business_account_id") or "").strip()
+    )
+    effective_meta_runtime_enabled = settings.meta_enabled and (
+        settings.meta_ready or cached_meta_token_ready
+    )
+    effective_instagram_publish_ready = effective_meta_runtime_enabled and (
+        bool(settings.instagram_business_account_id.strip()) or cached_instagram_account_ready
+    )
 
     try:
         with SessionLocal() as session:
@@ -45,6 +57,18 @@ def health_check() -> dict:
         "status": overall_status,
         "app": settings.app_name,
         "environment": settings.app_env,
+        "integrations": {
+            "meta_enabled": settings.meta_enabled,
+            "meta_ready": settings.meta_ready,
+            "meta_cached_token_ready": cached_meta_token_ready,
+            "meta_runtime_enabled": effective_meta_runtime_enabled,
+            "meta_oauth_ready": settings.meta_oauth_ready,
+            "instagram_publish_ready": effective_instagram_publish_ready,
+            "instagram_cached_account_ready": cached_instagram_account_ready,
+            "tiktok_enabled": settings.tiktok_enabled,
+            "tiktok_ready": settings.tiktok_ready,
+            "tiktok_runtime_enabled": settings.tiktok_runtime_enabled,
+        },
         "database": database_status,
         "database_mode": database_runtime.get("mode"),
         "database_fallback_reason": database_runtime.get("fallback_reason"),

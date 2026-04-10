@@ -11,6 +11,7 @@ from app.api.routes.conversations import router as conversations_router
 from app.api.routes.dashboard import router as dashboard_router
 from app.api.routes.health import router as health_router
 from app.api.routes.messages import router as messages_router
+from app.api.routes.oauth_meta import router as oauth_meta_router
 from app.api.routes.posts import router as posts_router
 from app.api.routes.webhooks_meta import router as webhooks_meta_router
 from app.core.config import settings
@@ -109,4 +110,5 @@ app.include_router(messages_router)
 app.include_router(contacts_router)
 app.include_router(posts_router)
 app.include_router(analytics_router)
+app.include_router(oauth_meta_router)
 app.include_router(dashboard_router)

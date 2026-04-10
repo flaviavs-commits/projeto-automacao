@@ -1,0 +1,33 @@
+{
+  "target": "http://127.0.0.1:8011",
+  "paths": [
+    "/dashboard",
+    "/health",
+    "/contacts",
+    "/conversations",
+    "/messages",
+    "/posts"
+  ],
+  "phase_duration_s": 15,
+  "peak_stable_concurrency": null,
+  "phases": [
+    {
+      "concurrency": 25,
+      "duration_s": 15,
+      "requests": 261,
+      "errors": 159,
+      "error_rate_pct": 60.92,
+      "rps": 17.4,
+      "latency_ms": {
+        "p50": 878.26,
+        "p95": 2195.98,
+        "p99": 3078.63,
+        "max": 3523.84
+      },
+      "status_counts": {
+        "200": 102,
+        "500": 159
+      }
+    }
+  ]
+}

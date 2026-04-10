@@ -20,6 +20,14 @@ class BaseExternalService:
             action=action,
         )
 
+    def integration_disabled(self, action: str, reason: str) -> ExternalServiceResult:
+        return ExternalServiceResult(
+            status="integration_disabled",
+            service=self.service_name,
+            action=action,
+            reason=reason,
+        )
+
     def missing_credentials(self, action: str, required: list[str]) -> ExternalServiceResult:
         return ExternalServiceResult(
             status="missing_credentials",

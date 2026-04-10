@@ -22,22 +22,91 @@ class Settings(BaseSettings):
         alias="DATABASE_URL",
     )
     redis_url: str = Field(default="redis://localhost:6379/0", alias="REDIS_URL")
+    meta_enabled: bool = Field(default=True, alias="META_ENABLED")
     meta_verify_token: str = Field(default="change-me", alias="META_VERIFY_TOKEN")
     meta_access_token: str = Field(default="", alias="META_ACCESS_TOKEN")
     meta_graph_base_url: str = Field(default="https://graph.facebook.com", alias="META_GRAPH_BASE_URL")
+    meta_auth_base_url: str = Field(default="https://www.facebook.com", alias="META_AUTH_BASE_URL")
     meta_api_version: str = Field(default="v23.0", alias="META_API_VERSION")
     meta_whatsapp_phone_number_id: str = Field(default="", alias="META_WHATSAPP_PHONE_NUMBER_ID")
     instagram_business_account_id: str = Field(default="", alias="INSTAGRAM_BUSINESS_ACCOUNT_ID")
     instagram_app_id: str = Field(default="", alias="INSTAGRAM_APP_ID")
     instagram_app_secret: str = Field(default="", alias="INSTAGRAM_APP_SECRET")
+    meta_app_id: str = Field(default="", alias="META_APP_ID")
+    meta_app_secret: str = Field(default="", alias="META_APP_SECRET")
+    meta_oauth_redirect_uri: str = Field(default="", alias="META_OAUTH_REDIRECT_URI")
+    meta_oauth_scopes: str = Field(
+        default=(
+            "public_profile,pages_show_list,pages_read_engagement,"
+            "instagram_basic,instagram_content_publish,"
+            "business_management,whatsapp_business_management,whatsapp_business_messaging"
+        ),
+        alias="META_OAUTH_SCOPES",
+    )
+    oauth_state_secret: str = Field(default="", alias="OAUTH_STATE_SECRET")
+    oauth_state_ttl_seconds: int = Field(default=600, alias="OAUTH_STATE_TTL_SECONDS")
+    token_encryption_secret: str = Field(default="", alias="TOKEN_ENCRYPTION_SECRET")
     youtube_api_key: str = Field(default="", alias="YOUTUBE_API_KEY")
     youtube_client_id: str = Field(default="", alias="YOUTUBE_CLIENT_ID")
     youtube_client_secret: str = Field(default="", alias="YOUTUBE_CLIENT_SECRET")
+    tiktok_enabled: bool = Field(default=True, alias="TIKTOK_ENABLED")
     tiktok_api_base_url: str = Field(default="https://open.tiktokapis.com", alias="TIKTOK_API_BASE_URL")
     tiktok_client_key: str = Field(default="", alias="TIKTOK_CLIENT_KEY")
     tiktok_client_secret: str = Field(default="", alias="TIKTOK_CLIENT_SECRET")
     local_storage_path: str = Field(default="storage", alias="LOCAL_STORAGE_PATH")
     log_level: str = Field(default="INFO", alias="LOG_LEVEL")
+
+    @property
+    def meta_ready(self) -> bool:
+        return bool(self.meta_access_token.strip())
+
+    @property
+    def meta_runtime_enabled(self) -> bool:
+        return self.meta_enabled and self.meta_ready
+
+    @property
+    def instagram_publish_ready(self) -> bool:
+        return self.meta_runtime_enabled and bool(self.instagram_business_account_id.strip())
+
+    @property
+    def meta_oauth_ready(self) -> bool:
+        return (
+            self.meta_enabled
+            and bool(self.effective_meta_app_id.strip())
+            and bool(self.effective_meta_app_secret.strip())
+        )
+
+    @property
+    def effective_oauth_state_secret(self) -> str:
+        return (
+            self.oauth_state_secret.strip()
+            or self.effective_meta_app_secret.strip()
+            or self.meta_verify_token.strip()
+        )
+
+    @property
+    def effective_token_encryption_secret(self) -> str:
+        return (
+            self.token_encryption_secret.strip()
+            or self.effective_meta_app_secret.strip()
+            or self.meta_verify_token.strip()
+        )
+
+    @property
+    def effective_meta_app_id(self) -> str:
+        return self.meta_app_id.strip() or self.instagram_app_id.strip()
+
+    @property
+    def effective_meta_app_secret(self) -> str:
+        return self.meta_app_secret.strip() or self.instagram_app_secret.strip()
+
+    @property
+    def tiktok_ready(self) -> bool:
+        return bool(self.tiktok_client_key.strip()) and bool(self.tiktok_client_secret.strip())
+
+    @property
+    def tiktok_runtime_enabled(self) -> bool:
+        return self.tiktok_enabled and self.tiktok_ready
 
 
 @lru_cache

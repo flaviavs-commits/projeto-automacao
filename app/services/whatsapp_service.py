@@ -1,5 +1,6 @@
 from app.core.config import settings
 from app.services.base import BaseExternalService
+from app.services.platform_account_service import PlatformAccountService
 
 
 class WhatsAppService(BaseExternalService):
@@ -16,8 +17,15 @@ class WhatsAppService(BaseExternalService):
         text = str(payload.get("text") or "").strip()
         if not to or not text:
             return self.invalid_payload("send_text_message", "fields 'to' and 'text' are required")
+        if not settings.meta_enabled:
+            return self.integration_disabled("send_text_message", "meta_disabled")
 
-        access_token = str(payload.get("access_token") or settings.meta_access_token).strip()
+        persisted_credentials = PlatformAccountService().get_latest_meta_credentials()
+        access_token = str(
+            payload.get("access_token")
+            or settings.meta_access_token
+            or persisted_credentials.get("access_token")
+        ).strip()
         phone_number_id = str(
             payload.get("phone_number_id")
             or settings.meta_whatsapp_phone_number_id
@@ -25,7 +33,10 @@ class WhatsAppService(BaseExternalService):
         if not access_token or not phone_number_id:
             return self.missing_credentials(
                 "send_text_message",
-                ["META_ACCESS_TOKEN", "META_WHATSAPP_PHONE_NUMBER_ID"],
+                [
+                    "META_ACCESS_TOKEN (or OAuth stored token)",
+                    "META_WHATSAPP_PHONE_NUMBER_ID",
+                ],
             )
 
         body = {

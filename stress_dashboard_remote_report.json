@@ -1,0 +1,50 @@
+{
+  "target": "https://projeto-automacao-production.up.railway.app",
+  "timestamp_utc": "2026-04-09T16:43:04Z",
+  "paths": [
+    "/dashboard",
+    "/health",
+    "/contacts",
+    "/conversations",
+    "/messages",
+    "/posts"
+  ],
+  "phase_duration_s": 20,
+  "peak_stable_concurrency": 20,
+  "phases": [
+    {
+      "concurrency": 20,
+      "duration_s": 20,
+      "requests": 1460,
+      "errors": 0,
+      "error_rate_pct": 0.0,
+      "rps": 73.0,
+      "latency_ms": {
+        "p50": 255.96,
+        "p95": 307.24,
+        "p99": 525.85,
+        "max": 685.2
+      },
+      "status_counts": {
+        "200": 1460
+      }
+    },
+    {
+      "concurrency": 40,
+      "duration_s": 20,
+      "requests": 918,
+      "errors": 0,
+      "error_rate_pct": 0.0,
+      "rps": 45.9,
+      "latency_ms": {
+        "p50": 350.52,
+        "p95": 3238.59,
+        "p99": 6457.05,
+        "max": 9636.38
+      },
+      "status_counts": {
+        "200": 918
+      }
+    }
+  ]
+}

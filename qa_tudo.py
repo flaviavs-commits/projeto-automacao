@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import argparse
 import json
@@ -12,11 +12,12 @@ import threading
 import time
 import traceback
 import webbrowser
+from contextlib import contextmanager
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any, Callable, Iterator
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlparse
 from urllib.request import Request, urlopen
@@ -35,6 +36,8 @@ EXPECTED_ROUTES = [
     "/messages",
     "/posts",
     "/analytics",
+    "/oauth/meta/start",
+    "/oauth/meta/callback",
     "/webhooks/meta",
 ]
 
@@ -45,6 +48,49 @@ REMOTE_ROUTES = [
     "/contacts",
     "/messages",
 ]
+
+LOCAL_SMOKE_ROUTES = [
+    "/",
+    "/health",
+    "/dashboard",
+    "/contacts",
+    "/conversations",
+    "/messages",
+    "/posts",
+    "/analytics",
+]
+
+SAMPLE_WEBHOOK_PAYLOAD = {
+    "object": "whatsapp_business_account",
+    "entry": [
+        {
+            "id": "WABA123",
+            "time": 1710000000,
+            "changes": [
+                {
+                    "field": "messages",
+                    "value": {
+                        "messaging_product": "whatsapp",
+                        "contacts": [
+                            {
+                                "wa_id": "5511999999999",
+                                "profile": {"name": "QA Bot"},
+                            }
+                        ],
+                        "messages": [
+                            {
+                                "from": "5511999999999",
+                                "id": "wamid.qa.smoke.20260409",
+                                "type": "text",
+                                "text": {"body": "qa smoke test"},
+                            }
+                        ],
+                    },
+                }
+            ],
+        }
+    ],
+}
 
 ROADMAP_ITEMS = [
     {
@@ -77,6 +123,22 @@ class CheckResult:
     duration_ms: int
 
 
+@dataclass(frozen=True)
+class CheckSpec:
+    scope: str
+    name: str
+    fn: Callable[[], tuple[str, str]]
+
+
+@dataclass(frozen=True)
+class RemoteRouteProbe:
+    route: str
+    status_code: int | None
+    body: Any
+    error: str | None
+    unreachable: bool
+
+
 class DashboardState:
     def __init__(self) -> None:
         self._lock = threading.Lock()
@@ -94,29 +156,29 @@ class DashboardState:
     def _touch(self) -> None:
         self._state["updated_at"] = datetime.now(timezone.utc).isoformat()
 
-    def register_checks(self, checks: list[tuple[str, str, Callable[[], tuple[str, str]]]]) -> None:
+    def register_checks(self, checks: list[CheckSpec]) -> None:
         with self._lock:
             self._state["checks"] = [
                 {
-                    "scope": scope,
-                    "name": name,
+                    "scope": check.scope,
+                    "name": check.name,
                     "status": "PENDING",
                     "details": "Aguardando execucao.",
                     "duration_ms": None,
                 }
-                for scope, name, _ in checks
+                for check in checks
             ]
             self._touch()
 
-    def start_check(self, scope: str, name: str) -> None:
+    def start_check(self, check: CheckSpec) -> None:
         with self._lock:
             for item in self._state["checks"]:
-                if item["scope"] == scope and item["name"] == name:
+                if item["scope"] == check.scope and item["name"] == check.name:
                     item["status"] = "RUNNING"
                     item["details"] = "Verificando..."
                     item["duration_ms"] = None
                     break
-            self._state["message"] = f"Verificando [{scope}] {name}"
+            self._state["message"] = f"Verificando [{check.scope}] {check.name}"
             self._touch()
 
     def finish_check(self, result: CheckResult) -> None:
@@ -237,20 +299,20 @@ class QARunner:
         self.results: list[CheckResult] = []
         self.dashboard_state = dashboard_state
 
-    def run(self, scope: str, name: str, fn: Callable[[], tuple[str, str]]) -> None:
+    def run(self, check: CheckSpec) -> None:
         if self.dashboard_state is not None:
-            self.dashboard_state.start_check(scope, name)
+            self.dashboard_state.start_check(check)
 
         start = time.time()
         try:
-            status, details = fn()
+            status, details = check.fn()
         except Exception as exc:  # noqa: BLE001
             status = "FAIL"
             details = f"{exc}\n{traceback.format_exc(limit=3)}"
 
         result = CheckResult(
-            scope=scope,
-            name=name,
+            scope=check.scope,
+            name=check.name,
             status=status,
             details=details,
             duration_ms=int((time.time() - start) * 1000),
@@ -293,6 +355,13 @@ def run_subprocess(command: list[str], timeout: int = 120) -> tuple[int, str, st
         timeout=timeout,
     )
     return proc.returncode, proc.stdout.strip(), proc.stderr.strip()
+
+
+def _runtime_mode_details(runtime: dict[str, Any]) -> tuple[str, str]:
+    mode = str(runtime.get("mode") or "unknown")
+    fallback_reason = runtime.get("fallback_reason")
+    reason_details = f"; motivo={fallback_reason}" if fallback_reason else ""
+    return mode, reason_details
 
 
 def check_runtime() -> tuple[str, str]:
@@ -347,15 +416,27 @@ def check_registered_routes() -> tuple[str, str]:
     return "PASS", f"{len(EXPECTED_ROUTES)} rotas esperadas registradas"
 
 
+def _database_status_from_mode(mode: str, reason_details: str) -> tuple[str, str]:
+    if mode == "primary":
+        return "PASS", "Conexao DB ok (SELECT 1; modo=primary)"
+    if mode == "fallback_sqlite":
+        return (
+            "PASS",
+            "Conexao DB ok (fallback_sqlite ativo) "
+            f"- DB primario indisponivel{reason_details}",
+        )
+    if mode == "degraded":
+        return "FAIL", f"DB em modo degradado{reason_details}"
+    return "FAIL", f"Modo de DB desconhecido: {mode}{reason_details}"
+
+
 def check_database() -> tuple[str, str]:
     from sqlalchemy import text
 
     from app.core.database import engine, get_database_runtime_state
 
     runtime = get_database_runtime_state()
-    mode = str(runtime.get("mode") or "unknown")
-    fallback_reason = runtime.get("fallback_reason")
-    reason_details = f"; motivo={fallback_reason}" if fallback_reason else ""
+    mode, reason_details = _runtime_mode_details(runtime)
 
     try:
         with engine.connect() as conn:
@@ -367,58 +448,36 @@ def check_database() -> tuple[str, str]:
             f"(modo={mode}{reason_details}): {exc.__class__.__name__}",
         )
 
-    if mode == "primary":
-        return "PASS", "Conexao DB ok (SELECT 1; modo=primary)"
-    if mode == "fallback_sqlite":
+    return _database_status_from_mode(mode, reason_details)
+
+
+def _check_redis_fallback(process_incoming_message: Any, reason_details: str) -> tuple[str, str]:
+    try:
+        probe_payload = {"qa_probe": "redis_fallback_memory"}
+        result = process_incoming_message.delay(probe_payload)
+        resolved = result.get(timeout=5)
+        if isinstance(resolved, dict) and resolved.get("status") == "queued_stub":
+            return (
+                "PASS",
+                "Fila operacional em fallback_memory "
+                f"(Redis primario indisponivel{reason_details})",
+            )
         return (
-            "PASS",
-            "Conexao DB ok (fallback_sqlite ativo) "
-            f"- DB primario indisponivel{reason_details}",
+            "FAIL",
+            "Fallback de fila ativo, mas resposta da task foi inesperada: "
+            f"{resolved}",
         )
-    if mode == "degraded":
-        return "FAIL", f"DB em modo degradado{reason_details}"
+    except Exception as exc:  # noqa: BLE001
+        return (
+            "FAIL",
+            "Fallback de fila ativo, mas task falhou "
+            f"({exc.__class__.__name__}){reason_details}",
+        )
 
-    return "FAIL", f"Modo de DB desconhecido: {mode}{reason_details}"
 
-
-def check_redis() -> tuple[str, str]:
+def _check_redis_primary(broker_url: str) -> tuple[str, str]:
     import redis
 
-    from app.workers.celery_app import get_queue_runtime_state
-    from app.workers.tasks import process_incoming_message
-
-    runtime = get_queue_runtime_state()
-    mode = str(runtime.get("mode") or "unknown")
-    fallback_reason = runtime.get("fallback_reason")
-    reason_details = f"; motivo={fallback_reason}" if fallback_reason else ""
-
-    if mode == "fallback_memory":
-        try:
-            probe_payload = {"qa_probe": "redis_fallback_memory"}
-            result = process_incoming_message.delay(probe_payload)
-            resolved = result.get(timeout=5)
-            if isinstance(resolved, dict) and resolved.get("status") == "queued_stub":
-                return (
-                    "PASS",
-                    "Fila operacional em fallback_memory "
-                    f"(Redis primario indisponivel{reason_details})",
-                )
-            return (
-                "FAIL",
-                "Fallback de fila ativo, mas resposta da task foi inesperada: "
-                f"{resolved}",
-            )
-        except Exception as exc:  # noqa: BLE001
-            return (
-                "FAIL",
-                "Fallback de fila ativo, mas task falhou "
-                f"({exc.__class__.__name__}){reason_details}",
-            )
-
-    if mode != "redis":
-        return "FAIL", f"Modo de fila invalido: {mode}{reason_details}"
-
-    broker_url = str(runtime.get("broker_url") or "")
     client = redis.Redis.from_url(
         broker_url,
         socket_connect_timeout=3,
@@ -433,140 +492,136 @@ def check_redis() -> tuple[str, str]:
         return "FAIL", f"Falha de conexao Redis (modo=redis): {exc.__class__.__name__}"
 
 
-def check_local_smoke() -> tuple[str, str]:
-    from sqlalchemy import create_engine
-    from sqlalchemy.orm import sessionmaker
-    from fastapi.testclient import TestClient
+def check_redis() -> tuple[str, str]:
+    from app.workers.celery_app import get_queue_runtime_state
+    from app.workers.tasks import process_incoming_message
 
-    from app import models as _models  # noqa: F401
-    from app.core.config import settings
-    from app.core.database import Base, get_db
-    from app.main import app
-    from app.api.routes import webhooks_meta
+    runtime = get_queue_runtime_state()
+    mode, reason_details = _runtime_mode_details(runtime)
 
-    checks: list[str] = []
-    failures: list[str] = []
+    if mode == "fallback_memory":
+        return _check_redis_fallback(process_incoming_message, reason_details)
 
-    api_routes = [
-        "/",
-        "/health",
-        "/dashboard",
-        "/contacts",
-        "/conversations",
-        "/messages",
-        "/posts",
-        "/analytics",
-    ]
+    if mode != "redis":
+        return "FAIL", f"Modo de fila invalido: {mode}{reason_details}"
 
-    sample_payload = {
-        "object": "whatsapp_business_account",
-        "entry": [
-            {
-                "id": "WABA123",
-                "time": 1710000000,
-                "changes": [
-                    {
-                        "field": "messages",
-                        "value": {
-                            "messaging_product": "whatsapp",
-                            "contacts": [
-                                {
-                                    "wa_id": "5511999999999",
-                                    "profile": {"name": "QA Bot"},
-                                }
-                            ],
-                            "messages": [
-                                {
-                                    "from": "5511999999999",
-                                    "id": "wamid.qa.smoke.20260409",
-                                    "type": "text",
-                                    "text": {"body": "qa smoke test"},
-                                }
-                            ],
-                        },
-                    }
-                ],
-            }
-        ],
-    }
+    broker_url = str(runtime.get("broker_url") or "")
+    return _check_redis_primary(broker_url)
 
-    noisy_loggers = ["httpx", "app.main"]
+
+@contextmanager
+def _muted_loggers(logger_names: tuple[str, ...]) -> Iterator[None]:
     previous_states: list[tuple[str, bool]] = []
-    for logger_name in noisy_loggers:
+    for logger_name in logger_names:
         target = logging.getLogger(logger_name)
         previous_states.append((logger_name, target.disabled))
         target.disabled = True
+    try:
+        yield
+    finally:
+        for logger_name, state in previous_states:
+            logging.getLogger(logger_name).disabled = state
+
+
+@contextmanager
+def _temporary_local_smoke_dependencies(
+    app: Any,
+    Base: Any,
+    get_db: Any,
+    webhooks_meta: Any,
+) -> Iterator[None]:
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
 
     original_overrides = dict(app.dependency_overrides)
     original_delay = webhooks_meta.process_incoming_message.delay
 
     tmp_root = ROOT / ".qa_tmp"
     tmp_root.mkdir(parents=True, exist_ok=True)
-    local_tmp_dir = Path(
-        tempfile.mkdtemp(prefix="qa_local_smoke_", dir=str(tmp_root))
-    )
+    local_tmp_dir = Path(tempfile.mkdtemp(prefix="qa_local_smoke_", dir=str(tmp_root)))
+    local_engine = None
 
     try:
-        try:
-            sqlite_path = local_tmp_dir / "qa_local_smoke.db"
-            sqlite_url = f"sqlite+pysqlite:///{sqlite_path.as_posix()}"
+        sqlite_path = local_tmp_dir / "qa_local_smoke.db"
+        sqlite_url = f"sqlite+pysqlite:///{sqlite_path.as_posix()}"
+        local_engine = create_engine(
+            sqlite_url,
+            connect_args={"check_same_thread": False},
+            future=True,
+        )
+        LocalSession = sessionmaker(bind=local_engine, autoflush=False, autocommit=False)
+        Base.metadata.create_all(bind=local_engine)
 
-            local_engine = create_engine(
-                sqlite_url,
-                connect_args={"check_same_thread": False},
-                future=True,
-            )
-            LocalSession = sessionmaker(bind=local_engine, autoflush=False, autocommit=False)
-            Base.metadata.create_all(bind=local_engine)
+        def override_get_db() -> Iterator[Any]:
+            db = LocalSession()
+            try:
+                yield db
+            finally:
+                db.close()
 
-            def override_get_db():
-                db = LocalSession()
-                try:
-                    yield db
-                finally:
-                    db.close()
-
-            app.dependency_overrides[get_db] = override_get_db
-            webhooks_meta.process_incoming_message.delay = lambda payload: {
+        def queue_stub(payload: dict[str, Any]) -> dict[str, Any]:
+            return {
                 "status": "queued_stub",
                 "payload": payload,
             }
 
-            with TestClient(app, raise_server_exceptions=False) as client:
-                for path in api_routes:
-                    resp = client.get(path)
-                    checks.append(f"GET {path} -> {resp.status_code}")
-                    if resp.status_code != 200:
-                        failures.append(f"GET {path} status={resp.status_code}")
-
-                verify = client.get(
-                    "/webhooks/meta",
-                    params={
-                        "hub.mode": "subscribe",
-                        "hub.verify_token": "__invalid_token__",
-                        "hub.challenge": "123",
-                    },
-                )
-                checks.append(f"GET /webhooks/meta (invalid token) -> {verify.status_code}")
-                if verify.status_code != 403:
-                    failures.append(
-                        f"GET /webhooks/meta invalid-token expected=403 got={verify.status_code}"
-                    )
-
-                post_hook = client.post("/webhooks/meta", json=sample_payload)
-                checks.append(f"POST /webhooks/meta -> {post_hook.status_code}")
-                if post_hook.status_code != 202:
-                    failures.append(f"POST /webhooks/meta expected=202 got={post_hook.status_code}")
-
-            local_engine.dispose()
-        finally:
-            shutil.rmtree(local_tmp_dir, ignore_errors=True)
+        app.dependency_overrides[get_db] = override_get_db
+        webhooks_meta.process_incoming_message.delay = queue_stub
+        yield
     finally:
         app.dependency_overrides = original_overrides
         webhooks_meta.process_incoming_message.delay = original_delay
+        if local_engine is not None:
+            local_engine.dispose()
+        shutil.rmtree(local_tmp_dir, ignore_errors=True)
 
-    for logger_name, state in previous_states:
-        logging.getLogger(logger_name).disabled = state
+
+def _run_local_route_checks(client: Any, checks: list[str], failures: list[str]) -> None:
+    for path in LOCAL_SMOKE_ROUTES:
+        resp = client.get(path)
+        checks.append(f"GET {path} -> {resp.status_code}")
+        if resp.status_code != 200:
+            failures.append(f"GET {path} status={resp.status_code}")
+
+
+def _run_local_webhook_checks(client: Any, checks: list[str], failures: list[str]) -> None:
+    verify = client.get(
+        "/webhooks/meta",
+        params={
+            "hub.mode": "subscribe",
+            "hub.verify_token": "__invalid_token__",
+            "hub.challenge": "123",
+        },
+    )
+    checks.append(f"GET /webhooks/meta (invalid token) -> {verify.status_code}")
+    if verify.status_code != 403:
+        failures.append(
+            f"GET /webhooks/meta invalid-token expected=403 got={verify.status_code}"
+        )
+
+    post_hook = client.post("/webhooks/meta", json=SAMPLE_WEBHOOK_PAYLOAD)
+    checks.append(f"POST /webhooks/meta -> {post_hook.status_code}")
+    if post_hook.status_code != 202:
+        failures.append(f"POST /webhooks/meta expected=202 got={post_hook.status_code}")
+
+
+def check_local_smoke() -> tuple[str, str]:
+    from fastapi.testclient import TestClient
+
+    from app import models as _models  # noqa: F401
+    from app.api.routes import webhooks_meta
+    from app.core.config import settings
+    from app.core.database import Base, get_db
+    from app.main import app
+
+    checks: list[str] = []
+    failures: list[str] = []
+
+    with _muted_loggers(("httpx", "app.main")):
+        with _temporary_local_smoke_dependencies(app, Base, get_db, webhooks_meta):
+            with TestClient(app, raise_server_exceptions=False) as client:
+                _run_local_route_checks(client, checks, failures)
+                _run_local_webhook_checks(client, checks, failures)
 
     details = f"env={settings.app_env}; db=sqlite_temp; " + " | ".join(checks)
     if failures:
@@ -585,40 +640,77 @@ def _http_get_json(url: str, timeout_seconds: int = 10) -> tuple[int, Any]:
             return status, raw
 
 
+def _probe_remote_route(base: str, route: str) -> RemoteRouteProbe:
+    url = f"{base}{route}"
+    try:
+        status_code, body = _http_get_json(url)
+        return RemoteRouteProbe(route=route, status_code=status_code, body=body, error=None, unreachable=False)
+    except HTTPError as exc:
+        return RemoteRouteProbe(
+            route=route,
+            status_code=exc.code,
+            body=None,
+            error=f"HTTP {exc.code}",
+            unreachable=False,
+        )
+    except URLError as exc:
+        return RemoteRouteProbe(
+            route=route,
+            status_code=None,
+            body=None,
+            error=f"unreachable ({exc.reason})",
+            unreachable=True,
+        )
+    except Exception as exc:  # noqa: BLE001
+        return RemoteRouteProbe(
+            route=route,
+            status_code=None,
+            body=None,
+            error=f"error ({exc})",
+            unreachable=True,
+        )
+
+
+def _probe_to_summary(probe: RemoteRouteProbe) -> str:
+    if probe.status_code is not None:
+        return f"GET {probe.route} -> {probe.status_code}"
+    return f"GET {probe.route} -> {probe.error}"
+
+
+def _validate_remote_health_payload(payload: Any, failures: list[str]) -> None:
+    if not isinstance(payload, dict):
+        failures.append("/health payload invalido")
+        return
+
+    status = payload.get("status")
+    db_status = payload.get("database")
+    redis_status = payload.get("redis")
+    if status != "ok":
+        failures.append(f"/health status esperado 'ok', recebido '{status}'")
+    if db_status != "ok":
+        failures.append(f"/health database esperado 'ok', recebido '{db_status}'")
+    if redis_status not in {"ok", "fallback", "configured"}:
+        failures.append(f"/health redis esperado 'ok|fallback|configured', recebido '{redis_status}'")
+
+
 def check_remote_smoke(base_url: str) -> tuple[str, str]:
     base = base_url.rstrip("/")
+    probes = [_probe_remote_route(base, route) for route in REMOTE_ROUTES]
+
     results: list[str] = []
     failures: list[str] = []
     unreachable = 0
 
-    for route in REMOTE_ROUTES:
-        url = f"{base}{route}"
-        try:
-            status_code, body = _http_get_json(url)
-            results.append(f"GET {route} -> {status_code}")
-            if status_code != 200:
-                failures.append(f"{route} status={status_code}")
-            if route == "/health" and isinstance(body, dict):
-                status = body.get("status")
-                db_status = body.get("database")
-                redis_status = body.get("redis")
-                if status != "ok":
-                    failures.append(f"/health status esperado 'ok', recebido '{status}'")
-                if db_status != "ok":
-                    failures.append(f"/health database esperado 'ok', recebido '{db_status}'")
-                if redis_status not in {"ok", "fallback", "configured"}:
-                    failures.append(
-                        f"/health redis esperado 'ok|fallback|configured', recebido '{redis_status}'"
-                    )
-        except HTTPError as exc:
-            results.append(f"GET {route} -> {exc.code}")
-            failures.append(f"{route} status={exc.code}")
-        except URLError as exc:
+    for probe in probes:
+        results.append(_probe_to_summary(probe))
+        if probe.unreachable:
             unreachable += 1
-            results.append(f"GET {route} -> unreachable ({exc.reason})")
-        except Exception as exc:  # noqa: BLE001
-            unreachable += 1
-            results.append(f"GET {route} -> error ({exc})")
+            continue
+        if probe.status_code != 200:
+            failures.append(f"{probe.route} status={probe.status_code}")
+            continue
+        if probe.route == "/health":
+            _validate_remote_health_payload(probe.body, failures)
 
     details = f"base_url={base}; " + " | ".join(results)
     if failures:
@@ -704,6 +796,30 @@ def parse_args() -> argparse.Namespace:
         help=argparse.SUPPRESS,
     )
     return parser.parse_args()
+
+
+def build_checks(args: argparse.Namespace) -> list[CheckSpec]:
+    checks = [
+        CheckSpec("Main/API", "Runtime Python", check_runtime),
+        CheckSpec("Main/API", "Dependencias", check_dependencies),
+        CheckSpec("Main/API", "Sintaxe (compileall)", check_compileall),
+        CheckSpec("Main/API", "Imports principais", check_imports),
+        CheckSpec("Main/API", "Rotas registradas", check_registered_routes),
+        CheckSpec("Infra Local", "Conexao DB", check_database),
+        CheckSpec("Infra Local", "Conexao Redis", check_redis),
+    ]
+
+    if not args.skip_local_smoke:
+        checks.append(CheckSpec("Smoke Local", "Smoke local FastAPI", check_local_smoke))
+    if not args.skip_remote:
+        checks.append(
+            CheckSpec(
+                "Smoke Remoto",
+                "Smoke remoto",
+                lambda: check_remote_smoke(args.base_url),
+            )
+        )
+    return checks
 
 
 def build_dashboard_html() -> str:
@@ -842,21 +958,7 @@ def main() -> int:
     if reexec_code is not None:
         return reexec_code
 
-    checks: list[tuple[str, str, Callable[[], tuple[str, str]]]] = [
-        ("Main/API", "Runtime Python", check_runtime),
-        ("Main/API", "Dependencias", check_dependencies),
-        ("Main/API", "Sintaxe (compileall)", check_compileall),
-        ("Main/API", "Imports principais", check_imports),
-        ("Main/API", "Rotas registradas", check_registered_routes),
-        ("Infra Local", "Conexao DB", check_database),
-        ("Infra Local", "Conexao Redis", check_redis),
-    ]
-
-    if not args.skip_local_smoke:
-        checks.append(("Smoke Local", "Smoke local FastAPI", check_local_smoke))
-
-    if not args.skip_remote:
-        checks.append(("Smoke Remoto", "Smoke remoto", lambda: check_remote_smoke(args.base_url)))
+    checks = build_checks(args)
 
     dashboard_state: DashboardState | None = None
     dashboard_server: DashboardServer | None = None
@@ -877,8 +979,8 @@ def main() -> int:
     runner = QARunner(dashboard_state=dashboard_state)
     exit_code = 1
     try:
-        for scope, name, fn in checks:
-            runner.run(scope, name, fn)
+        for check in checks:
+            runner.run(check)
 
         if dashboard_state is not None:
             dashboard_state.finalize()

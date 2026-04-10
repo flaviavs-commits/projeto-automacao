@@ -191,6 +191,25 @@ async def receive_meta_webhook(
     request: Request,
     db: Session = Depends(get_db),
 ) -> dict:
+    if not settings.meta_enabled:
+        logger.info(
+            "meta_webhook_ignored",
+            extra={
+                "path": str(request.url.path),
+                "environment": settings.app_env,
+                "reason": "meta_disabled",
+            },
+        )
+        return {
+            "status": "accepted",
+            "object": envelope.object,
+            "messages_detected": 0,
+            "messages_created": 0,
+            "messages_duplicated": 0,
+            "messages_queued": 0,
+            "ignored_reason": "meta_disabled",
+        }
+
     envelope_payload = envelope.model_dump(mode="json")
     extracted_messages = _extract_whatsapp_messages(envelope_payload)
     now_utc = datetime.now(timezone.utc)

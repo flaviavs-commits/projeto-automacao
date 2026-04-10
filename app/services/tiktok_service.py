@@ -10,6 +10,8 @@ class TikTokService(BaseExternalService):
     def publish_post(self, payload: dict) -> dict:
         if not payload:
             return {"status": "ignored", "reason": "empty_payload"}
+        if not settings.tiktok_enabled:
+            return self.integration_disabled("publish_post", "tiktok_disabled")
 
         access_token = str(payload.get("access_token") or "").strip()
         api_url = str(payload.get("api_url") or "").strip()

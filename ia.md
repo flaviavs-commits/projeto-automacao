@@ -7,6 +7,14 @@
 - Toda task executada deve ser registrada tambem em `ia.md` e `humano.md` antes de encerrar a entrega.
 - Todo comando para execucao no terminal deve ser escrito no formato de `cmd` (nao PowerShell).
 
+## Prioridade absoluta atual
+
+- Prioridade P0 permanente: rodar `qa_tudo.py` e fechar todas as falhas antes de considerar a etapa concluida.
+- Fluxo obrigatorio: executar QA completo -> identificar falhas -> corrigir -> reexecutar QA ate estabilizar.
+- Padrao de qualidade obrigatorio: seguir 100% a pasta `D:\Projeto\Chosen\Projeto-automacao\felixo-standards`.
+- Contrato principal backend: `D:\Projeto\Chosen\Projeto-automacao\felixo-standards\PADRÕES DE DESIGN\DESIGN_SYSTEM_PARA_BACKEND.md`.
+- Toda correcao deve manter modularizacao forte, separacao de responsabilidades, testabilidade e extensibilidade (Open/Closed).
+
 ## Escopo do projeto
 
 Backend centralizado para automacao multi-redes com:
@@ -352,3 +360,189 @@ Validacao final:
   - `messages_created=1`
   - `messages_queued=1`
 - Logs do worker confirmando `process_incoming_message` com `status=completed`.
+
+## Registro de task - 2026-04-10 (Railway login e conferencia de variaveis)
+
+Task executada: validacao de autenticacao Railway e auditoria de variaveis por servico.
+
+Evidencias:
+- Sessao Railway expirada inicialmente (erro `HTTP 403` no refresh OAuth).
+- Login confirmado pelo usuario (`whoami = flaviavs@vitissoulss.com`).
+- Variaveis auditadas em `projeto-automacao` e `worker`.
+- Inicialmente, `worker` nao possuia `TIKTOK_CLIENT_KEY` e `TIKTOK_CLIENT_SECRET`.
+- Credenciais TikTok copiadas para `worker` e confirmadas via `railway variable list --json`.
+
+## Registro de task - 2026-04-10 (modo TikTok-first com fallback Meta)
+
+Task executada: implementacao de operacao resiliente sem dependencia da Meta.
+
+Entregas no codigo:
+- Novas flags/config:
+  - `META_ENABLED`
+  - `TIKTOK_ENABLED`
+  - `meta_ready`, `meta_runtime_enabled`, `instagram_publish_ready`
+  - `tiktok_ready`, `tiktok_runtime_enabled`
+- `POST /webhooks/meta`:
+  - quando `META_ENABLED=false`, aceita e ignora payload com `ignored_reason=meta_disabled` (sem criar mensagens/jobs).
+- `POST/PATCH /posts`:
+  - plataformas Meta em estados de fila passam para `pending_meta_review` quando Meta indisponivel;
+  - TikTok passa para `pending_tiktok_setup` quando TikTok indisponivel;
+  - motivo registrado em `platform_payload._integration_block`.
+- Servicos externos:
+  - `InstagramPublishService` e `WhatsAppService` retornam `integration_disabled` quando Meta desligada.
+  - `TikTokService` retorna `integration_disabled` quando TikTok desligado.
+- Worker:
+  - `integration_disabled` agora fecha job como `blocked_integration`.
+- Observabilidade:
+  - `GET /health` passou a expor bloco `integrations` com estado de Meta/TikTok.
+- Documentacao:
+  - `.env.example` e `README.md` atualizados para o modo sem Meta.
+
+Validacao local:
+- `compileall` e imports principais: OK.
+- `qa_tudo.py --no-dashboard --no-pause`: `PASS=9`, `WARN=0`, `FAIL=0`.
+
+## Registro de task - 2026-04-10 (aplicacao em producao Railway)
+
+Task executada: aplicacao de flags e deploy dos servicos de producao.
+
+Configuracoes aplicadas:
+- Servico `projeto-automacao`:
+  - `META_ENABLED=false`
+  - `TIKTOK_ENABLED=true`
+- Servico `worker`:
+  - `META_ENABLED=false`
+  - `TIKTOK_ENABLED=true`
+  - `TIKTOK_CLIENT_KEY` e `TIKTOK_CLIENT_SECRET` presentes
+
+Deploy:
+- Deploy disparado para `worker` e `projeto-automacao` via `railway up`.
+- Status final dos servicos: `SUCCESS` (API, worker, Redis, Postgres).
+
+Validacao remota final:
+- `GET /health` em producao retornando:
+  - `status=ok`
+  - `database=ok`
+  - `redis=ok`
+  - `integrations.meta_enabled=false`
+  - `integrations.meta_runtime_enabled=false`
+  - `integrations.tiktok_enabled=true`
+  - `integrations.tiktok_runtime_enabled=true`
+
+## Estado funcional atual (2026-04-10)
+
+- Projeto operando em estrategia TikTok-first.
+- Integracao Meta desativada intencionalmente ate liberacao de token/permissoes.
+- Pipeline assincrono (Redis + Celery) ativo em producao com worker dedicado.
+- API publica e dashboard estaveis.
+- Nao ha suporte de API publica padrao para leitura de chat/DM privado do TikTok neste escopo.
+
+## Proximos passos recomendados (curto prazo)
+
+1. Implementar OAuth TikTok no backend (`/oauth/tiktok/start`, `/oauth/tiktok/callback`) com armazenamento seguro de `access_token`/`refresh_token`.
+2. Adicionar endpoints operacionais para TikTok (`/tiktok/me`, `/tiktok/videos`) usando tokens de usuario.
+3. Integrar fluxo de postagem TikTok ponta a ponta com token por conta autorizada (nao apenas credencial de app).
+4. Quando Meta liberar token/permissoes, reativar com `META_ENABLED=true` e validar webhook + dispatch.
+
+## Registro de task - 2026-04-10 (OAuth Meta/Facebook + pendencias de git add)
+
+Task executada: implementacao completa de OAuth Meta/Facebook no backend e consolidacao das mudancas pendentes no workspace.
+
+Entregas no codigo nesta task:
+- Novas rotas OAuth:
+- `GET /oauth/meta/start`
+- `GET /oauth/facebook/start`
+- `GET /oauth/meta/callback`
+- `GET /oauth/facebook/callback`
+- Novo servico de OAuth Meta para construir URL de autorizacao, trocar `code` por token e consultar `me`/`me/accounts`.
+- Novo fluxo de seguranca:
+- assinatura e validacao de `state` com TTL
+- criptografia/decriptografia de token para persistencia segura
+- Persistencia de token OAuth em `platform_accounts` com auditoria em `audit_logs`.
+- Fallback automatico dos servicos Meta para token salvo em banco:
+- `InstagramPublishService`
+- `WhatsAppService`
+- `posts` passou a considerar token OAuth salvo para decidir `pending_meta_review`.
+- `health` passou a expor readiness efetivo com token em cache OAuth (`meta_cached_token_ready`).
+- Configuracao e documentacao atualizadas para OAuth:
+- `META_AUTH_BASE_URL`
+- `META_APP_ID`/`META_APP_SECRET` (alias de app id/secret)
+- `META_OAUTH_REDIRECT_URI`
+- `META_OAUTH_SCOPES`
+- `OAUTH_STATE_SECRET`
+- `OAUTH_STATE_TTL_SECONDS`
+- `TOKEN_ENCRYPTION_SECRET`
+- Dependencia adicionada: `cryptography`.
+- QA atualizado para incluir as rotas OAuth Meta no inventario de endpoints esperados.
+
+Validacao tecnica desta task:
+- `python -m compileall app qa_tudo.py` executado com sucesso.
+- Nao foi possivel validar import/runtime completo da API nesta sessao por ausencia local de dependencias instaladas (`fastapi`).
+
+Pendencias de versionamento (nao adicionadas no git ate este registro):
+- Alteracoes ligadas ao OAuth Meta desta task:
+- `.env.example`
+- `README.md`
+- `app/api/routes/health.py`
+- `app/api/routes/posts.py`
+- `app/core/config.py`
+- `app/core/security.py`
+- `app/main.py`
+- `app/services/__init__.py`
+- `app/services/instagram_publish_service.py`
+- `app/services/whatsapp_service.py`
+- `qa_tudo.py`
+- `requirements.txt`
+- `app/api/routes/oauth_meta.py` (novo)
+- `app/services/meta_oauth_service.py` (novo)
+- `app/services/platform_account_service.py` (novo)
+- Alteracoes pendentes pre-existentes no workspace (fora do escopo direto desta task):
+- `app/api/routes/webhooks_meta.py`
+- `app/services/base.py`
+- `app/services/tiktok_service.py`
+- `app/workers/tasks.py`
+- `humano.md`
+- `ia.md`
+- `importants_cmds.md` (novo)
+- `stress_dashboard_remote_report.json` (novo)
+- `stress_dashboard_report.json` (novo)
+
+## Registro de task - 2026-04-10 (Refatoracao qa_tudo.py pelo padrao felixo-standards)
+
+Task executada: refatoracao estrutural do `qa_tudo.py` para aderir melhor ao `DESIGN_SYSTEM_PARA_BACKEND.md` (modularizacao, separacao de responsabilidades e extensibilidade).
+
+Mudancas aplicadas:
+- Introduzido contrato explicito para checks via `CheckSpec`.
+- `QARunner` e `DashboardState` passaram a operar por especificacao de check, reduzindo acoplamento por tuplas soltas.
+- `check_database` e `check_redis` foram decompostos com helpers dedicados de avaliacao por modo runtime.
+- `check_local_smoke` foi dividido em blocos menores:
+  - supressao de loggers em context manager
+  - ambiente temporario de dependencias locais em context manager
+  - funcoes separadas para checks de rotas e webhook
+- `check_remote_smoke` foi modularizado com:
+  - probe isolado por rota (`RemoteRouteProbe`)
+  - validacao separada de payload de `/health`
+  - agregacao final centralizada
+- Lista de rotas esperadas do QA atualizada para incluir:
+  - `/oauth/meta/start`
+  - `/oauth/meta/callback`
+
+Validacao executada nesta task:
+- `python -m compileall qa_tudo.py` -> sucesso.
+- `python qa_tudo.py --no-dashboard --no-pause --skip-remote` -> executou, mas com falhas de ambiente por dependencia ausente:
+  - `ModuleNotFoundError: No module named cryptography`
+
+Observacao:
+- Foi criada memoria local do Codex em `C:\Users\vitis\.codex\memories\felixo-standard-rule.md` registrando `felixo-standards` como baseline de qualidade para este projeto.
+
+## Registro de task - 2026-04-10 (relatorio pessoal tecnico do dia)
+
+Task executada: atualizacao do relatorio pessoal no padrao `relatorio_gabrielf_dd_mm.md` com consolidacao tecnica detalhada das atividades de 10/04.
+
+Arquivo gerado/atualizado:
+- `relatorio_gabrielf_10_04.md`
+
+Pontos destacados no relatorio:
+- consolidacao de entregas tecnicas do dia (Railway, modo TikTok-first, OAuth Meta/Facebook, refatoracao do QA e governanca de qualidade);
+- evidencias de QA com resultados por rodada e causas raiz;
+- principal desafio tecnico registrado explicitamente como a conexao com a plataforma da Meta (autenticacao, fluxo OAuth e estabilizacao de contrato de rota).
