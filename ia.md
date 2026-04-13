@@ -583,3 +583,23 @@ Validacao adicional desta sessao:
 
 Pendencia P1 que permanece:
 - Execucao de fluxo OAuth Meta real fim-a-fim (autorizacao externa, persistencia e refresh com credenciais reais) depende de ciclo manual com conta Meta e callback autorizado.
+
+## Registro de task - 2026-04-13 (push main + execucao checklist OAuth em producao)
+
+Task executada: conclusao operacional dos 2 proximos passos solicitados (push e execucao assistida do checklist).
+
+Entrega 1 - push:
+- Commit `8aad26d` enviado para `origin/main` com sucesso.
+- Confirmacao:
+  - `8aad26d (HEAD -> main, origin/main, origin/HEAD)`.
+
+Entrega 2 - checklist OAuth em producao:
+- Arquivo de execucao criado:
+  - `checklist_oauth_meta_producao_execucao_2026_04_13.md`
+- Validacoes executadas:
+  - `GET /health` -> `status=ok`, `database=ok`, `redis=ok`, `integrations.meta_enabled=false`.
+  - `GET /oauth/meta/start?return_url=true` -> `{"detail":"Meta integration is disabled (META_ENABLED=false)"}`.
+- Diagnostico:
+  - Fluxo OAuth Meta permanece bloqueado por configuracao intencional (`META_ENABLED=false`), portanto callback/persistencia OAuth real nao puderam ser executados nesta rodada.
+- Estado:
+  - degradacao controlada validada (sistema geral operacional, modulo Meta bloqueado sem indisponibilizar API).

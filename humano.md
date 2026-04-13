@@ -372,3 +372,21 @@ Estado ao final desta retomada:
 - Backend voltou a inicializar sem erro de schema nas rotas OAuth.
 - Pipeline de QA estabilizado novamente com `FAIL=0`.
 - Runtime Meta ficou mais defensivo para cenarios de token vencido.
+
+## Registro de task - 2026-04-13 (push da main + checklist OAuth executado)
+
+Task executada: conclusao dos dois itens solicitados no fechamento anterior.
+
+1. Push:
+- `main` enviada ao GitHub com sucesso.
+- Commit sincronizado:
+  - `8aad26d fix: close oauth p0 and harden meta token fallback`
+
+2. Checklist OAuth Meta em producao:
+- Rodado e registrado em:
+  - `checklist_oauth_meta_producao_execucao_2026_04_13.md`
+- Resultado pratico:
+  - `GET /health` ok em producao.
+  - `GET /oauth/meta/start?return_url=true` bloqueado com `META_ENABLED=false`.
+- Conclusao:
+  - checklist ficou parcial por bloqueio de configuracao (Meta desligada), mas com diagnostico claro e pendencias objetivas para concluir o fluxo OAuth real.
