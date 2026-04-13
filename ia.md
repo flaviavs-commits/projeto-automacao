@@ -18,7 +18,7 @@
 ## Escopo do projeto
 
 Backend centralizado para automacao multi-redes com:
-- WhatsApp (webhook e resposta automatica futura)
+- WhatsApp (webhook e resposta via LLM open source local, com lock de dominio para estudio/agendamento)
 - Instagram (mensageria e publicacao futura)
 - TikTok (publicacao futura)
 - YouTube (publicacao e comentarios futuros)
@@ -69,7 +69,7 @@ Backend centralizado para automacao multi-redes com:
 3. Executar `alembic upgrade head` no ambiente Railway.
 4. Validar URL publica (`/`, `/health`, `/dashboard`, `/docs`).
 5. Ligar webhook Meta para endpoint publico.
-6. Implementar pipeline de resposta automatica (mensagem e audio) via Celery.
+6. Implementar pipeline de resposta via LLM open source local (mensagem e audio) via Celery, sem dependencia de token externo.
 
 ## Registro de task - 2026-04-09
 
@@ -223,7 +223,7 @@ Entregas:
   - monta contexto via `MemoryService`;
   - executa roteamento via `RoutingService`;
   - tenta etapa de transcricao para mensagens de audio;
-  - gera resposta automatica e persiste mensagem outbound;
+- gera resposta via LLM e persiste mensagem outbound;
   - grava auditoria de processamento.
 - `generate_reply` agora persiste mensagem outbound (`ai_generated=True`) e auditoria de conversa.
 - `transcribe_audio`, `publish_instagram`, `publish_tiktok`, `publish_youtube`, `sync_youtube_comments` e `recalc_metrics` agora executam logica real minima com status de job (`completed`, `failed`, `blocked_not_configured`).
@@ -603,3 +603,61 @@ Entrega 2 - checklist OAuth em producao:
   - Fluxo OAuth Meta permanece bloqueado por configuracao intencional (`META_ENABLED=false`), portanto callback/persistencia OAuth real nao puderam ser executados nesta rodada.
 - Estado:
   - degradacao controlada validada (sistema geral operacional, modulo Meta bloqueado sem indisponibilizar API).
+
+## Registro de task - 2026-04-13 (mudanca de escopo para resposta via LLM open source)
+
+Task executada: atualizacao de escopo e inicio da troca de resposta estatica por resposta via LLM local/open source.
+
+Diretriz consolidada:
+- O assistente de atendimento deve responder somente sobre estudio e agendamento.
+- O fluxo nao deve depender de token externo de API paga.
+- O dominio deve ficar travado para evitar conversa fora do assunto.
+
+Alteracoes aplicadas:
+- Escopo atualizado em `ia.md`, `humano.md`, `README.md` e `qa_tudo.py`.
+- Config de LLM adicionada em `app/core/config.py` e `.env.example`.
+- Criado `app/services/llm_reply_service.py` (cliente para endpoint local estilo Ollama).
+- `MemoryService` evoluido para montar contexto real com historico da conversa.
+- `generate_reply` (worker Celery) alterado para usar LLM com lock de dominio e auditoria de status/modelo.
+- Base inicial de conhecimento adicionada em `app/prompts/studio_agendamento.md`.
+
+Pendencia principal desta frente:
+- Subir e manter runtime local do modelo open source (ex.: Ollama) com modelo carregado em `LLM_MODEL`.
+
+## Registro de task - 2026-04-13 (habilitacao Meta em producao + reexecucao checklist OAuth)
+
+Task executada: continuidade da validacao OAuth Meta com mudanca de configuracao em producao e nova rodada de checklist.
+
+Acoes executadas no Railway:
+- Autenticacao validada (`railway whoami`).
+- `META_ENABLED=true` aplicado em:
+  - servico `projeto-automacao` (API)
+  - servico `worker`
+- Deploys confirmados em `SUCCESS` apos alteracao de variavel.
+
+Evidencias de runtime (API em producao):
+- `GET /health`:
+  - `status=ok`
+  - `database=ok`
+  - `redis=ok`
+  - `integrations.meta_enabled=true`
+  - `integrations.meta_oauth_ready=false`
+  - `integrations.meta_cached_token_present=false`
+  - `integrations.meta_cached_token_ready=false`
+  - `integrations.meta_runtime_enabled=false`
+- `GET /oauth/meta/start?return_url=true`:
+  - `{"detail":"Meta OAuth is not configured (META_APP_ID/META_APP_SECRET or INSTAGRAM_APP_ID/INSTAGRAM_APP_SECRET)"}`
+
+Conclusao da rodada:
+- Bloqueio por `META_ENABLED=false` foi removido com sucesso.
+- Novo bloqueio atual: faltam credenciais OAuth Meta (`META_APP_ID`/`META_APP_SECRET` ou aliases Instagram).
+- Checklist atualizado em `checklist_oauth_meta_producao_execucao_2026_04_13.md` com duas rodadas (antes/depois da habilitacao).
+
+Pendencia para fechar 100% do checklist OAuth:
+- Definir no Railway as variaveis OAuth Meta:
+  - `META_APP_ID`
+  - `META_APP_SECRET`
+  - `META_OAUTH_REDIRECT_URI`
+  - `OAUTH_STATE_SECRET`
+  - `TOKEN_ENCRYPTION_SECRET`
+- Reexecutar `/oauth/meta/start?return_url=true` esperando `status=ok` e concluir callback real.

@@ -46,7 +46,7 @@ Nesta atualizacao, a prioridade foi validar o que ja estava pronto, corrigir pon
 
 ## Resultado
 
-Base pronta para avancar para integracoes reais e automacoes de resposta/publicacao, com observabilidade minima, dashboard inicial e trilha clara de deploy.
+Base pronta para avancar para integracoes reais e automacoes de resposta via LLM open source/publicacao, com observabilidade minima, dashboard inicial e trilha clara de deploy.
 
 ## Registro de task - 2026-04-09
 
@@ -177,7 +177,7 @@ Task executada: evolucao das tasks Celery para sair de placeholder e rodar fluxo
 O que foi implementado:
 - Arquivo `app/workers/tasks.py` refeito para:
   - criar e atualizar registros de `jobs` por task;
-  - processar mensagem inbound em `process_incoming_message` com contexto, roteamento, auditoria e resposta automatica;
+- processar mensagem inbound em `process_incoming_message` com contexto, roteamento, auditoria e resposta via LLM;
   - gerar mensagem outbound real em `generate_reply`;
   - executar transcricao minima em `transcribe_audio`;
   - executar rotinas de publish/sync com retorno operacional (`completed` ou `blocked_not_configured`);
@@ -390,3 +390,40 @@ Task executada: conclusao dos dois itens solicitados no fechamento anterior.
   - `GET /oauth/meta/start?return_url=true` bloqueado com `META_ENABLED=false`.
 - Conclusao:
   - checklist ficou parcial por bloqueio de configuracao (Meta desligada), mas com diagnostico claro e pendencias objetivas para concluir o fluxo OAuth real.
+
+## Registro de task - 2026-04-13 (escopo atualizado para LLM open source)
+
+Task executada: ajuste de direcao do produto para abandonar resposta estatica e operar atendimento por LLM local/open source.
+
+O que mudou:
+- Escopo textual atualizado para deixar explicito:
+  - resposta via LLM;
+  - lock de dominio em estudio/agendamento;
+  - operacao sem dependencia de token externo.
+- README e `.env.example` agora documentam configuracao de LLM local.
+- Worker `generate_reply` passou a gerar resposta via servico LLM, usando contexto de conversa e bloqueio de fora de escopo.
+- Base de conhecimento inicial foi criada para centralizar informacoes oficiais do estudio.
+
+Resultado pratico:
+- A arquitetura ja aceita resposta por modelo open source local.
+- O comportamento de atendimento fica orientado ao assunto de negocio (estudio e agenda), com redirecionamento quando o cliente sair do dominio.
+
+## Registro de task - 2026-04-13 (Meta habilitada e checklist OAuth reexecutado)
+
+Task executada: continuidade imediata apos autorizacao para prosseguir.
+
+O que foi feito:
+- `META_ENABLED=true` aplicado no Railway para:
+  - API (`projeto-automacao`)
+  - Worker (`worker`)
+- Deploys dos dois servicos confirmados em `SUCCESS`.
+- Checklist OAuth rodado novamente em producao.
+
+Resultado objetivo:
+- `GET /health` permaneceu `ok` com infraestrutura saudavel.
+- Meta agora aparece habilitada (`meta_enabled=true`), mas ainda sem prontidao OAuth (`meta_oauth_ready=false`).
+- `GET /oauth/meta/start?return_url=true` deixou de falhar por "meta disabled" e passou a falhar por falta de credenciais OAuth da Meta.
+
+Conclusao:
+- Houve avanco real de configuracao (flag habilitada em producao).
+- Checklist continua parcial ate inserir `META_APP_ID`/`META_APP_SECRET` (ou aliases Instagram) e concluir autorizacao real no callback.
