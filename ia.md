@@ -223,7 +223,7 @@ Entregas:
   - monta contexto via `MemoryService`;
   - executa roteamento via `RoutingService`;
   - tenta etapa de transcricao para mensagens de audio;
-- gera resposta via LLM e persiste mensagem outbound;
+  - gera resposta via LLM e persiste mensagem outbound;
   - grava auditoria de processamento.
 - `generate_reply` agora persiste mensagem outbound (`ai_generated=True`) e auditoria de conversa.
 - `transcribe_audio`, `publish_instagram`, `publish_tiktok`, `publish_youtube`, `sync_youtube_comments` e `recalc_metrics` agora executam logica real minima com status de job (`completed`, `failed`, `blocked_not_configured`).
@@ -646,6 +646,8 @@ Evidencias de runtime (API em producao):
   - `integrations.meta_cached_token_ready=false`
   - `integrations.meta_runtime_enabled=false`
 - `GET /oauth/meta/start?return_url=true`:
+  - `{"detail":"Meta OAuth is not configured (META_APP_ID/META_APP_SECRET or INSTAGRAM_APP_ID/INSTAGRAM_APP_SECRET)"}`
+- `GET /oauth/facebook/start?return_url=true`:
   - `{"detail":"Meta OAuth is not configured (META_APP_ID/META_APP_SECRET or INSTAGRAM_APP_ID/INSTAGRAM_APP_SECRET)"}`
 
 Conclusao da rodada:

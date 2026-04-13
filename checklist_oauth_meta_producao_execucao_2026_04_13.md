@@ -24,9 +24,12 @@
 
 2. Iniciar autorizacao OAuth: `BLOQUEADO`
    - `GET /oauth/meta/start?return_url=true` executado nas duas rodadas.
+   - `GET /oauth/facebook/start?return_url=true` executado na rodada 2.
    - Resposta rodada 1:
      - `{"detail":"Meta integration is disabled (META_ENABLED=false)"}`
    - Resposta rodada 2:
+     - `{"detail":"Meta OAuth is not configured (META_APP_ID/META_APP_SECRET or INSTAGRAM_APP_ID/INSTAGRAM_APP_SECRET)"}`
+   - Resposta rodada 2 (Facebook start):
      - `{"detail":"Meta OAuth is not configured (META_APP_ID/META_APP_SECRET or INSTAGRAM_APP_ID/INSTAGRAM_APP_SECRET)"}`
    - Conclusao: com Meta habilitada, bloqueio atual migrou para falta de credenciais OAuth da Meta.
 

@@ -177,7 +177,7 @@ Task executada: evolucao das tasks Celery para sair de placeholder e rodar fluxo
 O que foi implementado:
 - Arquivo `app/workers/tasks.py` refeito para:
   - criar e atualizar registros de `jobs` por task;
-- processar mensagem inbound em `process_incoming_message` com contexto, roteamento, auditoria e resposta via LLM;
+  - processar mensagem inbound em `process_incoming_message` com contexto, roteamento, auditoria e resposta via LLM;
   - gerar mensagem outbound real em `generate_reply`;
   - executar transcricao minima em `transcribe_audio`;
   - executar rotinas de publish/sync com retorno operacional (`completed` ou `blocked_not_configured`);
@@ -423,6 +423,7 @@ Resultado objetivo:
 - `GET /health` permaneceu `ok` com infraestrutura saudavel.
 - Meta agora aparece habilitada (`meta_enabled=true`), mas ainda sem prontidao OAuth (`meta_oauth_ready=false`).
 - `GET /oauth/meta/start?return_url=true` deixou de falhar por "meta disabled" e passou a falhar por falta de credenciais OAuth da Meta.
+- `GET /oauth/facebook/start?return_url=true` confirmou o mesmo bloqueio de credenciais OAuth.
 
 Conclusao:
 - Houve avanco real de configuracao (flag habilitada em producao).
