@@ -18,11 +18,11 @@ def health_check() -> dict:
     redis_status = "unknown"
     database_runtime = get_database_runtime_state()
     queue_runtime = get_queue_runtime_state()
-    cached_meta_credentials = PlatformAccountService().get_latest_meta_credentials()
-    cached_meta_token_ready = bool(str(cached_meta_credentials.get("access_token") or "").strip())
-    cached_instagram_account_ready = bool(
-        str(cached_meta_credentials.get("instagram_business_account_id") or "").strip()
-    )
+    cached_meta_snapshot = PlatformAccountService().get_latest_meta_snapshot()
+    cached_meta_token_ready = bool(cached_meta_snapshot.get("token_usable"))
+    cached_meta_token_present = bool(cached_meta_snapshot.get("token_present"))
+    cached_meta_token_expired = bool(cached_meta_snapshot.get("token_expired"))
+    cached_instagram_account_ready = bool(cached_meta_snapshot.get("instagram_account_ready"))
     effective_meta_runtime_enabled = settings.meta_enabled and (
         settings.meta_ready or cached_meta_token_ready
     )
@@ -61,6 +61,9 @@ def health_check() -> dict:
             "meta_enabled": settings.meta_enabled,
             "meta_ready": settings.meta_ready,
             "meta_cached_token_ready": cached_meta_token_ready,
+            "meta_cached_token_present": cached_meta_token_present,
+            "meta_cached_token_expired": cached_meta_token_expired,
+            "meta_cached_token_expires_at": cached_meta_snapshot.get("token_expires_at"),
             "meta_runtime_enabled": effective_meta_runtime_enabled,
             "meta_oauth_ready": settings.meta_oauth_ready,
             "instagram_publish_ready": effective_instagram_publish_ready,

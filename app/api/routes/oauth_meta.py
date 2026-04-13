@@ -150,7 +150,7 @@ def _build_start_response(
     return RedirectResponse(url=oauth_url, status_code=status.HTTP_302_FOUND)
 
 
-@router.get("/meta/start")
+@router.get("/meta/start", response_model=None)
 def start_meta_oauth(
     request: Request,
     redirect_uri: str | None = Query(default=None),
@@ -166,7 +166,7 @@ def start_meta_oauth(
     )
 
 
-@router.get("/facebook/start")
+@router.get("/facebook/start", response_model=None)
 def start_facebook_oauth(
     request: Request,
     redirect_uri: str | None = Query(default=None),

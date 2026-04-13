@@ -345,3 +345,30 @@ Resultado:
 - Meta ficou em modo desligado intencional ate liberacao oficial de token/permissoes.
 - Fila assincrona (Redis + Celery) esta funcionando em producao.
 - API e dashboard estao estaveis.
+
+## Registro de task - 2026-04-13 (retomada P0/P1 do dia 10/04)
+
+Task executada: continuidade direta do plano P0/P1 aberto em 10/04.
+
+P0 fechado:
+- Corrigido o erro estrutural do FastAPI nas rotas OAuth Meta/Facebook (`dict | RedirectResponse`).
+- Ajuste aplicado com `response_model=None` em:
+  - `GET /oauth/meta/start`
+  - `GET /oauth/facebook/start`
+- QA reexecutado no ciclo completo:
+  - sem remoto: `PASS=8`, `FAIL=0`
+  - com remoto: `PASS=9`, `FAIL=0`
+
+P1 evoluido:
+- Fallback OAuth Meta ficou mais seguro:
+  - token em cache expirado nao e mais tratado como token valido.
+- `PlatformAccountService` passou a expor snapshot com estado de token (`present`, `expired`, `usable`, `expires_at`).
+- `GET /health` ganhou campos para observabilidade do cache OAuth:
+  - `meta_cached_token_present`
+  - `meta_cached_token_expired`
+  - `meta_cached_token_expires_at`
+
+Estado ao final desta retomada:
+- Backend voltou a inicializar sem erro de schema nas rotas OAuth.
+- Pipeline de QA estabilizado novamente com `FAIL=0`.
+- Runtime Meta ficou mais defensivo para cenarios de token vencido.

@@ -546,3 +546,40 @@ Pontos destacados no relatorio:
 - consolidacao de entregas tecnicas do dia (Railway, modo TikTok-first, OAuth Meta/Facebook, refatoracao do QA e governanca de qualidade);
 - evidencias de QA com resultados por rodada e causas raiz;
 - principal desafio tecnico registrado explicitamente como a conexao com a plataforma da Meta (autenticacao, fluxo OAuth e estabilizacao de contrato de rota).
+
+## Registro de task - 2026-04-13 (retomada P0/P1 iniciados em 10/04)
+
+Task executada: retomada das prioridades pendentes do relatorio de 10/04 com foco em estabilizacao de contrato FastAPI e robustez de fallback OAuth Meta.
+
+P0 concluido nesta sessao:
+- Corrigido erro de contrato das rotas OAuth:
+  - `GET /oauth/meta/start`
+  - `GET /oauth/facebook/start`
+- Ajuste aplicado em `app/api/routes/oauth_meta.py` com `response_model=None` para evitar inferencia invalida de `dict | RedirectResponse`.
+- Revalidacao obrigatoria do ciclo QA:
+  - `python qa_tudo.py --no-dashboard --no-pause --skip-remote` -> `PASS=8`, `WARN=0`, `FAIL=0`
+  - `python qa_tudo.py --no-dashboard --no-pause` -> `PASS=9`, `WARN=0`, `FAIL=0`
+
+P1 avancado nesta sessao:
+- `PlatformAccountService` evoluido para considerar expiracao de token OAuth Meta:
+  - token expirado deixa de ser elegivel como fallback de runtime;
+  - adicionada janela de seguranca de 60s antes da expiracao.
+- Novo snapshot operacional em `PlatformAccountService`:
+  - `token_present`
+  - `token_expired`
+  - `token_usable`
+  - `token_expires_at`
+- `GET /health` atualizado para observabilidade de cache OAuth:
+  - `meta_cached_token_present`
+  - `meta_cached_token_expired`
+  - `meta_cached_token_expires_at`
+- Como efeito, fallback Meta em `posts`/`WhatsAppService`/`InstagramPublishService` passa a considerar apenas token realmente utilizavel.
+
+Validacao adicional desta sessao:
+- Probe local do servico confirmou logica de expiracao:
+  - `expired_past=True`
+  - `expired_future=False`
+  - `get_latest_meta_credentials()` sem token util retorna `{}`.
+
+Pendencia P1 que permanece:
+- Execucao de fluxo OAuth Meta real fim-a-fim (autorizacao externa, persistencia e refresh com credenciais reais) depende de ciclo manual com conta Meta e callback autorizado.
