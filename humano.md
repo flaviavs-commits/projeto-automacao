@@ -428,3 +428,243 @@ Resultado objetivo:
 Conclusao:
 - Houve avanco real de configuracao (flag habilitada em producao).
 - Checklist continua parcial ate inserir `META_APP_ID`/`META_APP_SECRET` (ou aliases Instagram) e concluir autorizacao real no callback.
+
+## Registro de task - 2026-04-13 (base funcional do atendente registrada)
+
+Task executada: registro das regras de negocio que viram base oficial para features e identidade do atendente.
+
+Decisoes consolidadas:
+- Memoria nao depende de pergunta de confirmacao no chat.
+- Frases ambiguas nao podem ser persistidas como memoria.
+- O atendente nao realiza agendamento no chat; ele redireciona para o site.
+- O atendente cobre duvidas de estudio, disponibilidade, valores, servicos e fotos do espaco.
+- Identificacao do cliente e obrigatoria no inicio do atendimento.
+- O mesmo cliente deve ser unificado entre WhatsApp, Instagram e Facebook.
+- Retomada de contexto deve usar identificador unico global de cliente.
+
+Persistencia da diretriz:
+- regras adicionadas em `app/prompts/studio_agendamento.md` para guiar implementacao e comportamento do agente.
+
+## Registro de task - 2026-04-13 (customer_id global, unificacao multicanal e memorias-chave)
+
+Task executada: implementacao da estrutura para tratar a mesma pessoa como um unico cliente entre WhatsApp, Instagram e Facebook.
+
+O que foi implementado:
+- `customer_id` global em `contacts`.
+- tabela `contact_identities` para mapear identidades por canal para um unico cliente.
+- tabela `contact_memories` para memorias-chave.
+- `CustomerIdentityService` para resolver/criar cliente unico por identidade de canal.
+- `ContactMemoryService` para salvar memoria somente quando a mensagem for clara (sem ambiguidade).
+- `webhooks_meta` atualizado para:
+  - usar resolucao de identidade por canal;
+  - manter `customer_id` no fluxo enfileirado.
+- `MemoryService` atualizado para entregar historico + memorias-chave ao LLM.
+- `generate_reply` atualizado para usar esse contexto enriquecido.
+
+Regra de memoria aplicada:
+- frases ambiguas como `talvez`, `nao sei` e `ainda estou vendo` nao viram memoria.
+
+Validacao feita:
+- compilacao Python da app completa sem erro;
+- import/runtime de API e worker ok;
+- migracao nova aplicada com sucesso em banco local;
+- smoke com webhook:
+  - mensagem clara salvou memorias-chave;
+  - mensagem ambigua nao salvou memoria.
+
+## Registro de task - 2026-04-13 (road test em EXE para testar LLM da empresa)
+
+Task executada: fechamento do ambiente de teste isolado para conversar com o modelo personalizado da empresa sem mexer no fluxo real.
+
+O que foi entregue:
+- Chat de teste em `road_test/chat_test_app.py` com:
+  - identificacao obrigatoria do cliente no inicio;
+  - selecao/troca de modelo por lista (`LLM_TEST_MODELS`);
+  - memoria-chave com filtro de ambiguidade;
+  - comando `/link` para unificar identidades extras no mesmo cliente;
+  - armazenamento separado em `storage/road_test/`.
+- Ajuste no `LLMReplyService` para:
+  - manter lock de dominio realmente ativo (evita sair de estudio/agendamento);
+  - carregar base de conhecimento tambem no modo empacotado (EXE).
+- Build do EXE em `road_test/build_chat_test_exe.cmd` com inclusao da base de conhecimento (`studio_agendamento.md`).
+- README atualizado com passo a passo do road test.
+
+Validacao desta rodada:
+- compilacao (`compileall`) da app + road_test: ok.
+- QA completo (`qa_tudo.py --no-dashboard --no-pause`): `PASS=8`, `WARN=1`, `FAIL=0`.
+  - aviso remoto foi de conectividade do ambiente, sem falha de codigo.
+- Build do executavel concluido com sucesso.
+- EXE executado com entrada simulada e resposta fora de escopo bloqueada corretamente.
+
+Estado final:
+- Road test implementado e funcional.
+- Fluxo real nao foi alterado para depender do road test.
+- Proximo passo e apenas treino/tuning do modelo com dados oficiais do estudio.
+
+## Registro de task - 2026-04-13 (agente FC VIP com regras comerciais obrigatorias)
+
+Task executada: implementacao do agente comercial da FC VIP no fluxo LLM com foco em conversao e bloqueio de comportamento fora do escopo.
+
+O que foi entregue:
+- prompt/base oficial em `app/prompts/studio_agendamento.md` com:
+  - system prompt final;
+  - regras organizadas;
+  - exemplos de conversa;
+  - desvios de assunto;
+  - conversao;
+  - fallback humano.
+- `LLMReplyService` reforcado para:
+  - escolher automaticamente o link certo por contexto:
+    - novo + agendar -> `/formulario`
+    - novo + conhecer -> `/`
+    - antigo + agendar -> `/agendamentos`
+  - forcar fechamento com CTA + link no final da resposta;
+  - evitar saida de tema e manter postura comercial.
+- `ContactMemoryService` reforcado para salvar memorias uteis ao funil:
+  - cliente novo/antigo;
+  - tipo de projeto foto/video;
+  - duracao;
+  - numero de pessoas.
+- dominio padrao do agente atualizado para FC VIP em `config/.env.example`.
+
+Validacao:
+- compileall da app e road_test ok;
+- QA completo ok (`FAIL=0`);
+- apenas `WARN` remoto por indisponibilidade de conectividade externa no ambiente atual.
+
+## Registro de task - 2026-04-13 (melhoria de UX no EXE sem LLM online)
+
+Task executada: correcao do comportamento do EXE quando o modelo nao esta acessivel.
+
+Problema:
+- antes, o cliente via erro tecnico (`ConnectError`) no chat.
+
+Ajuste feito:
+- fallback amigavel no `road_test/chat_test_app.py`:
+  - remove detalhe tecnico da resposta ao cliente;
+  - mantem resposta comercial no padrao FC VIP;
+  - finaliza com CTA e link correto.
+
+Status:
+- EXE rebuildado com sucesso.
+- teste real do EXE confirmou resposta limpa mesmo com LLM offline.
+
+## Registro de task - 2026-04-13 (atalhos locais para iniciar leve e parar tudo)
+
+Task executada: criacao dos atalhos CMD que voce pediu para operacao local simples.
+
+Arquivos criados:
+- `road_test/iniciar_leve_local.cmd`
+  - sobe runtime Ollama se necessario;
+  - garante modelo leve (`qwen2.5:0.5b-instruct`);
+  - abre o chat EXE;
+  - modo `--check` para checagem rapida sem abrir chat.
+- `road_test/parar_tudo_local.cmd`
+  - fecha chat EXE;
+  - descarrega modelos;
+  - encerra runtime Ollama.
+
+Documentacao:
+- README atualizado com os dois novos comandos.
+
+Validacao:
+- start check ok;
+- stop ok;
+- start check novamente ok.
+
+## Registro de task - 2026-04-13 (sem fallback hardcoded + runtime leve)
+
+Task executada: remover respostas fixas por texto e deixar o road test depender do LLM, com runtime local mais controlado.
+
+Entregas:
+- removi do `road_test/chat_test_app.py`:
+  - respostas hardcoded para `oi` e variacoes;
+  - respostas hardcoded para `qual seu nome` e variacoes;
+  - fallback comercial estatico para mensagens comuns.
+- mantive no chat apenas:
+  - resposta real do LLM;
+  - mensagem operacional quando o motor local estiver offline.
+- atualizei `app/services/llm_reply_service.py`:
+  - removido bloqueio por lista de palavras antes do LLM;
+  - adicionados controles de runtime (`timeout`, `num_ctx`, `num_thread`, `keep_alive`);
+  - prompt com instrucoes de identidade do agente (`Agente FC VIP`).
+- atualizei `app/core/config.py`, `.env` e `.env.example` com novos parametros LLM e default local em `qwen2.5:1.5b-instruct`.
+- reescrevi `road_test/iniciar_leve_local.cmd` para iniciar com limite de carga e validar API antes de continuar.
+- rebuild do EXE concluido:
+  - `dist/chat_estudio_road_test.exe`.
+
+Status:
+- maquina estabilizada apos executar `road_test/parar_tudo_local.cmd`.
+- validacao de carga longa do runtime foi pausada para evitar novo travamento.
+
+## Registro de task - 2026-04-13 (teste com parada por gargalo)
+
+Task executada: teste controlado pedido pelo usuario com parada imediata em caso de gargalo da maquina.
+
+O que rodei:
+- subi somente o runtime (`--check`);
+- executei 1 chamada curta no `LLMReplyService` com modo ultra leve (`0.5b`, contexto 512, 2 threads, timeout 20s).
+
+Resultado:
+- retornou `request_failed` com `ReadTimeout`;
+- tempo observado da chamada: `22.23s` (acima do limite seguro).
+
+Acao tomada:
+- parei o runtime imediatamente com `road_test/parar_tudo_local.cmd`;
+- nenhum teste adicional foi executado para evitar novo crash.
+
+## Registro de task - 2026-04-13 (LLM no Railway em servico dedicado)
+
+Task executada: subir Ollama em servico separado no Railway e conectar API/worker ao runtime interno.
+
+O que foi feito:
+- criado servico `llm-runtime` no mesmo projeto Railway;
+- criado deploy dedicado no repo:
+  - `infra/llm-runtime/Dockerfile`
+  - `infra/llm-runtime/start.sh`
+- criado/anexado volume do `llm-runtime` em `/root/.ollama`;
+- variaveis do runtime configuradas para operacao estavel (`num_parallel=1`, `max_loaded_models=1`, modelo 1.5b e fallback 0.5b);
+- API e worker apontados para:
+  - `LLM_BASE_URL=http://llm-runtime.railway.internal:11434`.
+
+Ajustes de deploy:
+- deploy atualizado da API e do worker com codigo atual.
+
+Erro encontrado e corrigido:
+- webhook retornou 500 por tabela faltando (`contact_identities`);
+- migracao aplicada em producao com sucesso (`alembic upgrade head`).
+
+Validacao final:
+- todos os servicos em `SUCCESS` no Railway;
+- `GET /health` OK;
+- webhook de teste aceito e enfileirado;
+- worker confirmou chamada real ao LLM interno:
+  - `POST .../api/chat` com `200`;
+- mensagem outbound registrada com `llm_status=completed`.
+
+## Registro de task - 2026-04-13 (references + performance no Railway)
+
+Task executada: trocar conexoes para variaveis referenciadas entre servicos e acelerar resposta do LLM.
+
+Alteracoes principais:
+- API e worker agora usam referencia entre servicos para:
+  - `DATABASE_URL` (dados do Postgres)
+  - `REDIS_URL` (Redis)
+  - `LLM_BASE_URL` (dominio interno do `llm-runtime`)
+  - `LLM_MODEL` e `LLM_KEEP_ALIVE` (vindos do `llm-runtime`)
+- tuning de performance:
+  - modelo padrao no runtime: `qwen2.5:0.5b-instruct`
+  - `OLLAMA_NUM_PARALLEL=2`
+  - `OLLAMA_KEEP_ALIVE=30m`
+  - contexto/tokens/timeouts reduzidos na API/worker (`ctx=768`, `max_tokens=96`, `timeout=35s`).
+
+Problema encontrado e resolvido:
+- webhook caiu com `500` por insert legado sem `customer_id`.
+- ajuste de compatibilidade aplicado no banco:
+  - `customer_id` com `DEFAULT` no Postgres
+  - preenchimento dos `NULL` existentes.
+
+Resultado:
+- todos os servicos ficaram em `SUCCESS`.
+- health em producao: `ok`.
+- latencia caiu de ~`11.1s` para ~`5.19s` no processamento da mensagem com LLM.

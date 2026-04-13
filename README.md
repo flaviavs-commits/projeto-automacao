@@ -32,6 +32,8 @@ app/
   models/
     audit_log.py
     contact.py
+    contact_identity.py
+    contact_memory.py
     conversation.py
     job.py
     message.py
@@ -45,8 +47,11 @@ app/
     webhook.py
   services/
     analytics_service.py
+    contact_memory_service.py
+    customer_identity_service.py
     instagram_publish_service.py
     instagram_service.py
+    llm_reply_service.py
     media_service.py
     memory_service.py
     routing_service.py
@@ -54,10 +59,17 @@ app/
     transcription_service.py
     whatsapp_service.py
     youtube_service.py
+  prompts/
+    studio_agendamento.md
   workers/
     celery_app.py
     tasks.py
 alembic/
+road_test/
+  chat_test_app.py
+  build_chat_test_exe.cmd
+  iniciar_leve_local.cmd
+  parar_tudo_local.cmd
 ```
 
 ## Configuracao
@@ -93,6 +105,17 @@ Copie `.env.example` para `.env` e ajuste os valores locais. As variaveis suport
 - `TIKTOK_API_BASE_URL`
 - `TIKTOK_CLIENT_KEY`
 - `TIKTOK_CLIENT_SECRET`
+- `LLM_ENABLED`
+- `LLM_PROVIDER`
+- `LLM_BASE_URL`
+- `LLM_MODEL`
+- `LLM_TEMPERATURE`
+- `LLM_MAX_OUTPUT_TOKENS`
+- `LLM_CONTEXT_MESSAGES`
+- `LLM_DOMAIN_LOCK`
+- `LLM_DOMAIN_DESCRIPTION`
+- `LLM_KNOWLEDGE_PATH`
+- `LLM_TEST_MODELS`
 - `LOCAL_STORAGE_PATH`
 - `LOG_LEVEL`
 
@@ -130,6 +153,82 @@ No Railway, configure as variaveis de ambiente necessarias (principalmente `DATA
 
 ```bash
 celery -A app.workers.celery_app.celery_app worker --loglevel=info
+```
+
+## Assistente LLM local (open source)
+
+- O projeto foi direcionado para respostas via LLM local/open source (sem dependencia de token externo).
+- Integracao atual espera endpoint compativel com Ollama em `LLM_BASE_URL` (padrao: `http://127.0.0.1:11434`).
+- Modelo padrao de configuracao: `qwen2.5:7b-instruct` (ajustavel por `LLM_MODEL`).
+- O lock de dominio e aplicado por `LLM_DOMAIN_LOCK=true`, restringindo o atendimento para estudio e agendamento.
+- A base de conhecimento usada no prompt deve ser mantida em `LLM_KNOWLEDGE_PATH` (padrao: `app/prompts/studio_agendamento.md`).
+- O arquivo `app/prompts/studio_agendamento.md` foi estruturado para o atendimento comercial FC VIP, com prompt final, regras, exemplos, anti-desvio, conversao e fallback humano.
+- Para road test multi-modelo, configure `LLM_TEST_MODELS` com a lista CSV dos modelos disponiveis no runtime local.
+
+## LLM no Railway (servico separado)
+
+Para producao, rode o LLM em um servico dedicado no mesmo projeto Railway (nao no mesmo processo da API):
+
+- `projeto-automacao` (API)
+- `worker` (Celery)
+- `llm-runtime` (Ollama)
+- `Postgres` e `Redis`
+
+Arquivos de deploy do runtime:
+
+- `infra/llm-runtime/Dockerfile`
+- `infra/llm-runtime/start.sh`
+
+Configuracao recomendada no `llm-runtime`:
+
+- volume em `/root/.ollama` (persistencia de modelos)
+- `LLM_MODEL=qwen2.5:1.5b-instruct`
+- `LLM_MODELS_TO_PULL=qwen2.5:1.5b-instruct,qwen2.5:0.5b-instruct`
+- `OLLAMA_HOST=0.0.0.0:11434`
+- `OLLAMA_NUM_PARALLEL=1`
+- `OLLAMA_MAX_LOADED_MODELS=1`
+- `OLLAMA_KEEP_ALIVE=15m`
+
+Configuracao da API e worker para usar o runtime interno:
+
+- `LLM_BASE_URL=http://llm-runtime.railway.internal:11434`
+- `LLM_ENABLED=true`
+- `LLM_PROVIDER=ollama`
+- `LLM_MODEL=qwen2.5:1.5b-instruct`
+
+Observacao:
+
+- Se a API estiver em versao com novas tabelas (ex.: `contact_identities`), execute migracoes antes de validar webhook:
+  - `alembic upgrade head`
+
+## Road Test Isolado (chat EXE)
+
+- Objetivo: testar conversa com o modelo "cara da empresa" sem interferir no fluxo real da API/worker.
+- O chat de teste reutiliza as mesmas regras de dominio, memoria-chave e bloqueio de ambiguidade do backend.
+- Antes de rodar, configure no `.env` o endpoint/modelos de teste (`LLM_BASE_URL`, `LLM_MODEL`, `LLM_TEST_MODELS`).
+- O build do EXE inclui `app/prompts/studio_agendamento.md`, mantendo o mesmo padrao de informacao do fluxo real.
+- Build do executavel (CMD):
+
+```cmd
+road_test\build_chat_test_exe.cmd
+```
+
+- Executar:
+
+```cmd
+dist\chat_estudio_road_test.exe
+```
+
+- Atalho para iniciar modo leve local (sobe Ollama se precisar, garante modelo leve e abre chat):
+
+```cmd
+road_test\iniciar_leve_local.cmd
+```
+
+- Atalho para parar tudo (fecha chat, descarrega modelo e encerra Ollama):
+
+```cmd
+road_test\parar_tudo_local.cmd
 ```
 
 ## Migracoes
@@ -194,3 +293,6 @@ alembic upgrade head
 - OAuth Meta/Facebook (`/oauth/meta/start` + `/oauth/meta/callback`) esta implementado com `state` assinado e persistencia de token em `platform_accounts`.
 - Dashboard web inicial para operacao (leads, mensagens e posts) disponivel em `/dashboard`.
 - Integracoes externas ja possuem adaptadores HTTP reais (WhatsApp/Instagram/TikTok/YouTube), operando com fallback seguro quando faltam credenciais.
+- `generate_reply` passou a usar LLM local/open source com contexto de conversa e lock de dominio para estudio/agendamento.
+- Clientes agora possuem `customer_id` global e podem ser unificados por identidade de canal em `contact_identities` (WhatsApp/Instagram/Facebook).
+- Memorias-chave por cliente sao persistidas em `contact_memories`, com bloqueio de persistencia para mensagens ambiguas.

@@ -10,10 +10,10 @@ from app.core.database import get_db
 from app.core.logging import get_logger
 from app.core.security import safe_compare
 from app.models.audit_log import AuditLog
-from app.models.contact import Contact
 from app.models.conversation import Conversation
 from app.models.message import Message
 from app.schemas.webhook import MetaWebhookEnvelope
+from app.services.customer_identity_service import CustomerIdentityService
 from app.workers.tasks import process_incoming_message
 
 
@@ -29,7 +29,7 @@ def _to_dict(value: object) -> dict:
     return {}
 
 
-def _extract_whatsapp_messages(envelope_payload: dict) -> list[dict]:
+def _extract_meta_messages(envelope_payload: dict) -> list[dict]:
     extracted: list[dict] = []
 
     for entry in envelope_payload.get("entry", []):
@@ -86,34 +86,66 @@ def _extract_whatsapp_messages(envelope_payload: dict) -> list[dict]:
                 if isinstance(profile_payload, dict):
                     profile_name = profile_payload.get("name")
 
-                extracted.append(
-                    {
-                        "platform": "whatsapp",
-                        "wa_id": wa_id,
-                        "profile_name": profile_name,
-                        "external_message_id": external_message_id,
-                        "message_type": message_type,
-                        "text_content": text_content,
-                        "media_url": str(media_url) if media_url else None,
-                        "phone_number_id": phone_number_id,
-                        "raw_payload": message,
-                    }
-                )
+                if wa_id:
+                    extracted.append(
+                        {
+                            "platform": "whatsapp",
+                            "platform_user_id": wa_id,
+                            "profile_name": profile_name,
+                            "external_message_id": external_message_id,
+                            "message_type": message_type,
+                            "text_content": text_content,
+                            "media_url": str(media_url) if media_url else None,
+                            "phone_number_id": phone_number_id,
+                            "raw_payload": message,
+                        }
+                    )
+
+        messaging_events = entry.get("messaging")
+        if not isinstance(messaging_events, list):
+            continue
+
+        for event in messaging_events:
+            if not isinstance(event, dict):
+                continue
+
+            message = _to_dict(event.get("message"))
+            if not message:
+                continue
+
+            sender = _to_dict(event.get("sender"))
+            sender_id = str(sender.get("id") or "").strip()
+            if not sender_id:
+                continue
+            profile_name = str(sender.get("name") or "").strip() or None
+
+            messaging_product = str(event.get("messaging_product") or "").strip().lower()
+            platform = "instagram" if messaging_product == "instagram" else "facebook"
+            text_content = message.get("text")
+            external_message_id = str(message.get("mid") or message.get("id") or "").strip()
+
+            media_url = None
+            attachments = message.get("attachments")
+            if isinstance(attachments, list) and attachments:
+                first_attachment = attachments[0] if isinstance(attachments[0], dict) else {}
+                payload = _to_dict(first_attachment.get("payload"))
+                media_url = str(payload.get("url") or "").strip() or None
+
+            extracted.append(
+                {
+                    "platform": platform,
+                    "platform_user_id": sender_id,
+                    "profile_name": profile_name,
+                    "external_message_id": external_message_id,
+                    "message_type": str(message.get("type") or "text"),
+                    "text_content": text_content,
+                    "media_url": media_url,
+                    "phone_number_id": None,
+                    "raw_payload": event,
+                }
+            )
 
     return extracted
-
-
-def _get_or_create_contact(db: Session, wa_id: str, profile_name: str | None) -> Contact:
-    contact = db.query(Contact).filter(Contact.phone == wa_id).first()
-    if contact is None:
-        contact = Contact(phone=wa_id, name=profile_name)
-        db.add(contact)
-        db.flush()
-        return contact
-
-    if profile_name and not contact.name:
-        contact.name = profile_name
-    return contact
 
 
 def _get_or_create_open_conversation(
@@ -212,7 +244,7 @@ async def receive_meta_webhook(
         }
 
     envelope_payload = envelope.model_dump(mode="json")
-    extracted_messages = _extract_whatsapp_messages(envelope_payload)
+    extracted_messages = _extract_meta_messages(envelope_payload)
     now_utc = datetime.now(timezone.utc)
     created_messages_count = 0
     duplicate_messages_count = 0
@@ -233,8 +265,8 @@ async def receive_meta_webhook(
     )
 
     for item in extracted_messages:
-        wa_id = item.get("wa_id")
-        if not wa_id:
+        platform_user_id = str(item.get("platform_user_id") or "").strip()
+        if not platform_user_id:
             continue
 
         external_message_id = item.get("external_message_id")
@@ -248,9 +280,10 @@ async def receive_meta_webhook(
                 duplicate_messages_count += 1
                 continue
 
-        contact = _get_or_create_contact(
+        contact = CustomerIdentityService().resolve_or_create_contact(
             db=db,
-            wa_id=wa_id,
+            platform=item.get("platform", "whatsapp"),
+            platform_user_id=platform_user_id,
             profile_name=item.get("profile_name"),
         )
         conversation = _get_or_create_open_conversation(
@@ -283,6 +316,7 @@ async def receive_meta_webhook(
                 "message_id": str(message.id),
                 "conversation_id": str(conversation.id),
                 "contact_id": str(contact.id),
+                "customer_id": contact.customer_id,
                 "platform": message.platform,
                 "message_type": message.message_type,
                 "external_message_id": message.external_message_id,

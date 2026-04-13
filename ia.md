@@ -663,3 +663,303 @@ Pendencia para fechar 100% do checklist OAuth:
   - `OAUTH_STATE_SECRET`
   - `TOKEN_ENCRYPTION_SECRET`
 - Reexecutar `/oauth/meta/start?return_url=true` esperando `status=ok` e concluir callback real.
+
+## Registro de task - 2026-04-13 (regras base da identidade do atendente)
+
+Task executada: consolidacao das regras funcionais do atendente para orientar as proximas features.
+
+Diretrizes registradas como base:
+- Nao perguntar confirmacao de memoria no chat.
+- Respostas ambiguas nao podem ser salvas como memoria.
+- Ambiguidades explicitas (`talvez`, `nao sei`, `ainda estou vendo`) nao sao "sim".
+- O atendente nao agenda diretamente; apenas redireciona para o site para agendamento final.
+- O atendente responde duvidas de estudio, valores, disponibilidade, servicos e fotos do espaco.
+- Antes de conduzir conversa, o sistema deve identificar a pessoa.
+- Uma pessoa deve ser um unico cliente entre WhatsApp, Instagram e Facebook.
+- O contexto deve ser retomado pelo identificador unico do cliente (nao por canal isolado).
+
+Arquivo de identidade atualizado:
+- `app/prompts/studio_agendamento.md`
+
+## Registro de task - 2026-04-13 (implementacao customer_id global + identidades + memorias-chave)
+
+Task executada: implementacao tecnica da base para identificar cliente unico entre canais e retomar contexto por memoria-chave.
+
+Entregas de modelagem e persistencia:
+- Novo `customer_id` em `contacts` (identificador global unico por cliente).
+- Nova tabela `contact_identities` para mapear identidades por canal:
+  - `platform`
+  - `platform_user_id`
+  - vinculacao com `contact_id`
+- Nova tabela `contact_memories` para memorias-chave por cliente:
+  - `memory_key`
+  - `memory_value`
+  - `importance`
+  - `confidence`
+  - `source_message_id`
+- Migracao criada: `alembic/versions/20260413_0002_customer_identity_memory.py`.
+
+Entregas de servico e fluxo:
+- `CustomerIdentityService` criado para resolver/criar cliente unico por canal e evitar duplicacao.
+- `ContactMemoryService` criado para extrair e salvar memorias-chave de mensagens inbound.
+- Regra de ambiguidade aplicada em memoria:
+  - mensagens com termos como `talvez`, `nao sei`, `ainda estou vendo` nao sao persistidas.
+- `webhooks_meta` atualizado para usar resolucao de identidade por canal e incluir `customer_id` no payload enfileirado.
+- `MemoryService` evoluido para montar:
+  - historico recente da conversa
+  - memorias-chave ativas do cliente
+- `generate_reply` atualizado para usar memorias-chave no contexto do LLM.
+
+Validacao executada:
+- `python -m compileall app qa_tudo.py` -> sucesso.
+- `python -c "from app.main import app; ..."` -> imports ok.
+- `alembic upgrade head` com SQLite local -> sucesso.
+- Smoke local via `TestClient`:
+  - caso claro salva memorias-chave.
+  - caso ambiguo nao salva memoria.
+
+## Registro de task - 2026-04-13 (road test EXE isolado para LLM multi-modelo)
+
+Task executada: implementacao e validacao do road test em chat simples (EXE), sem interferir no fluxo real da API/worker.
+
+Entregas aplicadas:
+- `road_test/chat_test_app.py` evoluido para:
+  - exigir identificacao inicial do cliente (canal + id);
+  - reutilizar as mesmas regras de memoria-chave e ambiguidade (`ContactMemoryService`);
+  - reutilizar o mesmo gerador de resposta (`LLMReplyService`) com override de modelo;
+  - listar e trocar modelos por `LLM_TEST_MODELS`;
+  - vincular identidades extras por comando `/link` com bloqueio de conflito entre clientes;
+  - salvar estado isolado em `storage/road_test/chat_test_profiles.json`.
+- `app/services/llm_reply_service.py` ajustado para:
+  - resolver `LLM_KNOWLEDGE_PATH` de forma robusta (projeto local e bundle PyInstaller);
+  - corrigir lock de dominio para nao liberar fora de escopo por falso positivo.
+- `road_test/build_chat_test_exe.cmd` ajustado para incluir:
+  - `app/prompts/studio_agendamento.md` dentro do EXE (`--add-data`).
+- `README.md` atualizado com instrucoes do road test e variaveis necessarias.
+
+Validacoes executadas nesta task:
+- `cmd /c .\.venv\Scripts\python.exe -m compileall app road_test` -> sucesso.
+- `cmd /c .\.venv\Scripts\python.exe qa_tudo.py --no-dashboard --no-pause` -> `PASS=8`, `WARN=1`, `FAIL=0`.
+  - `WARN` remoto esperado: indisponibilidade de conectividade para `https://projeto-automacao-production.up.railway.app` no ambiente atual.
+- Smoke interativo do script `road_test/chat_test_app.py` -> sucesso.
+- Build do executavel:
+  - `cmd /c road_test\build_chat_test_exe.cmd` -> sucesso.
+  - artefato gerado em `dist\chat_estudio_road_test.exe`.
+- Execucao do EXE com entrada simulada -> sucesso (resposta fora de escopo bloqueada corretamente).
+
+Ponto de parada desta rodada:
+- A implementacao foi finalizada ate o ponto de treinamento/tuning do modelo.
+- Proxima etapa manual: treinar/ajustar o modelo open source com os dados oficiais do estudio.
+
+## Registro de task - 2026-04-13 (agente comercial FC VIP no Qwen2.5:7B-Instruct)
+
+Task executada: configuracao e endurecimento do agente para regras comerciais da FC VIP (WhatsApp/Instagram), com direcionamento obrigatorio por link.
+
+Entregas implementadas:
+- `app/prompts/studio_agendamento.md` refeito com pacote completo para uso direto no Qwen2.5:7B-Instruct:
+  - system prompt final;
+  - regras organizadas;
+  - exemplos de conversa;
+  - casos de desvio;
+  - casos de conversao;
+  - casos de fallback humano.
+- `app/services/llm_reply_service.py` evoluido para compliance operacional:
+  - selecao automatica de link obrigatorio por contexto (`novo/agendar`, `novo/conhecer`, `antigo/agendar`);
+  - reforco de dominio e anti-desvio;
+  - pos-processamento de resposta para sempre finalizar com CTA + link correto;
+  - carga da base de conhecimento preservando estrutura textual (ate 12000 chars).
+- `app/services/contact_memory_service.py` evoluido para memorias-chave de conversao:
+  - status de cliente (`cliente_status`, `ja_conhece_estudio`);
+  - tipo de projeto (`foto`, `video`, `foto_e_video`);
+  - `duracao_desejada_horas`;
+  - `numero_pessoas`.
+- Config default de dominio ajustada:
+  - `LLM_DOMAIN_DESCRIPTION=fc vip estudio fotografia video agendamento` em `app/core/config.py` e `.env.example`.
+- README atualizado com a nova base FC VIP.
+
+Validacao executada:
+- `python -m compileall app road_test` -> sucesso.
+- import direto de `LLMReplyService` -> sucesso.
+- smoke de funcoes internas de roteamento de link -> sucesso.
+- `python qa_tudo.py --no-dashboard --no-pause` -> `PASS=8`, `WARN=1`, `FAIL=0`.
+  - `WARN` remoto esperado por indisponibilidade de conectividade no ambiente atual.
+
+## Registro de task - 2026-04-13 (correcao EXE para LLM offline sem erro tecnico ao cliente)
+
+Task executada: ajuste do road test para nao expor erro tecnico bruto quando o endpoint LLM estiver indisponivel.
+
+Diagnostico:
+- erro original no EXE: `ConnectError [WinError 10061]` ao chamar `LLM_BASE_URL`;
+- verificacao local confirmou ausencia de runtime `ollama` no host (`ollama` nao reconhecido no CMD).
+
+Correcao aplicada:
+- `road_test/chat_test_app.py` atualizado para fallback amigavel:
+  - quando a chamada LLM falha, o chat nao mostra detalhe tecnico;
+  - usa resposta comercial segura com redirecionamento e CTA final por link correto.
+- Rebuild do executavel:
+  - `dist/chat_estudio_road_test.exe` regenerado com sucesso.
+
+Validacao:
+- execucao do EXE rebuildado com LLM offline:
+  - resposta retornou texto comercial e link, sem stack/error tecnico.
+
+## Registro de task - 2026-04-13 (scripts CMD de iniciar leve e parar tudo)
+
+Task executada: automacao operacional local para reduzir friccao no uso diario do road test.
+
+Entregas:
+- Novo script `road_test/iniciar_leve_local.cmd`:
+  - detecta `ollama.exe`;
+  - garante runtime na porta `11434`;
+  - garante modelo leve `qwen2.5:0.5b-instruct` (pull automatico se faltar);
+  - abre `dist/chat_estudio_road_test.exe`;
+  - suporta modo `--check` para validacao sem abrir o chat.
+- Novo script `road_test/parar_tudo_local.cmd`:
+  - fecha `chat_estudio_road_test.exe`;
+  - descarrega modelos (`0.5b`, `1.5b`, `7b`);
+  - encerra processos `ollama.exe`/`ollama app.exe`.
+- README atualizado com os novos atalhos CMD.
+
+Validacao executada:
+- `cmd /c road_test\iniciar_leve_local.cmd --check` -> sucesso.
+- `cmd /c road_test\parar_tudo_local.cmd` -> sucesso.
+- nova rodada de `--check` apos stop -> sucesso.
+
+## Registro de task - 2026-04-13 (remocao de fallback hardcoded e runtime local mais seguro)
+
+Task executada: ajuste para remover respostas por regra textual no road test e reforcar operacao local leve sem travar a maquina.
+
+Entregas no codigo:
+- `road_test/chat_test_app.py`:
+  - removidas respostas hardcoded de saudacao e nome do agente;
+  - removido fallback comercial estatico para mensagens normais;
+  - resposta agora vem do LLM; se runtime estiver offline, retorna erro operacional claro (nao resposta fake).
+- `app/services/llm_reply_service.py`:
+  - removido bloqueio pre-LLM por lista de keywords (dominio agora controlado pelo prompt e regras);
+  - adicionados parametros de performance/configuracao:
+    - `LLM_TIMEOUT_SECONDS`
+    - `LLM_NUM_CTX`
+    - `LLM_NUM_THREAD`
+    - `LLM_KEEP_ALIVE`
+  - payload para Ollama atualizado com `num_ctx`, `num_thread` e `keep_alive`;
+  - prompt reforcado para responder nome do agente como `Agente FC VIP`.
+- `app/core/config.py`, `.env` e `.env.example` atualizados com novas variaveis LLM e default local mais equilibrado:
+  - modelo padrao local: `qwen2.5:1.5b-instruct`.
+- `road_test/iniciar_leve_local.cmd` refeito para:
+  - startup mais leve (`OLLAMA_NUM_PARALLEL=1`, `OLLAMA_MAX_LOADED_MODELS=1`);
+  - health check por API (`/api/tags`) antes de continuar;
+  - garantir modelo leve `qwen2.5:1.5b-instruct`.
+- `dist/chat_estudio_road_test.exe` rebuildado com as mudancas.
+
+Observacao operacional desta rodada:
+- para evitar novos travamentos do host, o runtime foi encerrado imediatamente quando houve reclamacao de crash e os testes de carga em runtime foram interrompidos.
+- proximo passo seguro: validar novamente `road_test\\iniciar_leve_local.cmd --check` com monitoramento de CPU/RAM, antes de abrir chat interativo longo.
+
+## Registro de task - 2026-04-13 (teste controlado de gargalo e parada preventiva)
+
+Task executada: teste curto com limite agressivo para validar gargalo de maquina sem travar o host.
+
+Execucao:
+- `road_test\\parar_tudo_local.cmd` -> limpeza inicial.
+- `road_test\\iniciar_leve_local.cmd --check` -> runtime e API Ollama ativos.
+- teste unico via `LLMReplyService` com override ultra leve:
+  - `LLM_MODEL=qwen2.5:0.5b-instruct`
+  - `LLM_NUM_CTX=512`
+  - `LLM_NUM_THREAD=2`
+  - `LLM_MAX_OUTPUT_TOKENS=64`
+  - `LLM_TIMEOUT_SECONDS=20`
+
+Resultado:
+- status retornado: `request_failed`
+- detalhe: `ReadTimeout: timed out`
+- latencia observada: `22.23s`
+
+Acao de seguranca aplicada:
+- execucao interrompida apos detectar gargalo;
+- runtime encerrado imediatamente com `road_test\\parar_tudo_local.cmd`.
+
+## Registro de task - 2026-04-13 (llm-runtime dedicado no Railway + integracao API/worker)
+
+Task executada: configuracao completa do LLM em servico separado no Railway, mantendo API e worker no mesmo projeto.
+
+Infra criada:
+- novo servico Railway: `llm-runtime`.
+- deploy dedicado via pasta do repositorio:
+  - `infra/llm-runtime/Dockerfile`
+  - `infra/llm-runtime/start.sh`
+- volume persistente anexado ao `llm-runtime` em `/root/.ollama` para manter modelos entre reinicios.
+
+Configuracoes aplicadas no `llm-runtime`:
+- `LLM_MODEL=qwen2.5:1.5b-instruct`
+- `LLM_MODELS_TO_PULL=qwen2.5:1.5b-instruct,qwen2.5:0.5b-instruct`
+- `OLLAMA_HOST=0.0.0.0:11434`
+- `OLLAMA_NUM_PARALLEL=1`
+- `OLLAMA_MAX_LOADED_MODELS=1`
+- `OLLAMA_KEEP_ALIVE=15m`
+
+Configuracoes aplicadas em `projeto-automacao` e `worker`:
+- `LLM_BASE_URL=http://llm-runtime.railway.internal:11434`
+- `LLM_ENABLED=true`
+- `LLM_PROVIDER=ollama`
+- `LLM_MODEL=qwen2.5:1.5b-instruct`
+- `LLM_TIMEOUT_SECONDS=60`
+- `LLM_NUM_CTX=1024`
+- `LLM_NUM_THREAD=4`
+- `LLM_CONTEXT_MESSAGES=8`
+
+Deploys executados:
+- `llm-runtime`, `projeto-automacao` e `worker` em `SUCCESS`.
+
+Validacoes:
+- `GET /health` em producao retornando `status=ok`.
+- webhook de teste aceito (`messages_created=1`, `messages_queued=1`).
+- logs do worker confirmando chamada real:
+  - `POST http://llm-runtime.railway.internal:11434/api/chat` com `200 OK`.
+- mensagem outbound persistida com:
+  - `llm_status=completed`
+  - `llm_model=qwen2.5:1.5b-instruct`.
+
+Correcao adicional aplicada:
+- apos deploy novo, ocorreu erro `500` por migracao pendente (`contact_identities` inexistente).
+- migracao executada com sucesso em producao (`alembic upgrade head`) usando `DATABASE_PUBLIC_URL` do Postgres.
+
+## Registro de task - 2026-04-13 (references entre servicos + tuning de performance Railway)
+
+Task executada: conversao de variaveis para referencia entre servicos no Railway e ajuste de performance do runtime LLM.
+
+References aplicadas (API + worker):
+- `DATABASE_URL` montada com referencias do servico `Postgres-w1Lp` (`PGUSER`, `PGPASSWORD`, `RAILWAY_PRIVATE_DOMAIN`, `PGPORT`, `PGDATABASE`) mantendo prefixo `postgresql+psycopg://`.
+- `REDIS_URL` referenciada de `Redis.REDIS_URL`.
+- `LLM_BASE_URL` referenciada de `llm-runtime.RAILWAY_PRIVATE_DOMAIN`.
+- `LLM_MODEL` referenciado de `llm-runtime.LLM_MODEL`.
+- `LLM_KEEP_ALIVE` referenciado de `llm-runtime.OLLAMA_KEEP_ALIVE`.
+
+Tuning aplicado:
+- `llm-runtime`:
+  - `LLM_MODEL=qwen2.5:0.5b-instruct`
+  - `LLM_MODELS_TO_PULL=qwen2.5:0.5b-instruct,qwen2.5:1.5b-instruct`
+  - `OLLAMA_KEEP_ALIVE=30m`
+  - `OLLAMA_NUM_PARALLEL=2`
+  - `OLLAMA_MAX_LOADED_MODELS=1`
+- API/worker:
+  - `LLM_MAX_OUTPUT_TOKENS=96`
+  - `LLM_TIMEOUT_SECONDS=35`
+  - `LLM_NUM_CTX=768`
+  - `LLM_NUM_THREAD=4`
+  - `LLM_CONTEXT_MESSAGES=6`
+
+Incidente encontrado durante a rodada:
+- webhook retornou `500` por caminho legado inserindo `contacts` sem `customer_id`.
+- mitigacao de compatibilidade aplicada direto no Postgres:
+  - `ALTER TABLE contacts ALTER COLUMN customer_id SET DEFAULT ...`
+  - `UPDATE contacts SET customer_id ... WHERE customer_id IS NULL`
+- apos mitigacao, webhook voltou a `202 accepted`.
+
+Validacao final:
+- todos os servicos em `SUCCESS` (`projeto-automacao`, `worker`, `llm-runtime`, `Postgres`, `Redis`).
+- `GET /health` em producao: `status=ok`.
+- worker confirmou chamada interna ao LLM:
+  - `POST http://llm-runtime.railway.internal:11434/api/chat -> 200`.
+- ganho de latencia observado:
+  - antes do tuning: `process_incoming_message` ~`11.1s`
+  - apos tuning: `process_incoming_message` ~`5.19s`.

@@ -101,7 +101,7 @@ ROADMAP_ITEMS = [
     },
     {
         "scope": "Proximas etapas",
-        "name": "Pipeline de resposta automatica no worker",
+        "name": "Pipeline de resposta via LLM no worker",
         "status": "WIP",
         "details": "Trabalho em progresso",
     },

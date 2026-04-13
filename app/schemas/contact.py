@@ -43,6 +43,7 @@ class ContactRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: UUID
+    customer_id: str
     name: str | None
     phone: str | None
     instagram_user_id: str | None

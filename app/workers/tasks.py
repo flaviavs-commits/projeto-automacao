@@ -10,7 +10,9 @@ from app.models.conversation import Conversation
 from app.models.job import Job
 from app.models.message import Message
 from app.models.post import Post
+from app.services.contact_memory_service import ContactMemoryService
 from app.services.instagram_publish_service import InstagramPublishService
+from app.services.llm_reply_service import LLMReplyService
 from app.services.memory_service import MemoryService
 from app.services.routing_service import RoutingService
 from app.services.tiktok_service import TikTokService
@@ -69,20 +71,6 @@ def _finish_job(job_id: UUID, status: str, error_message: str | None = None) -> 
         db.commit()
 
 
-def _render_auto_reply(source_text: str) -> str:
-    compact = " ".join(source_text.strip().split())
-    if not compact:
-        return "Recebemos sua mensagem. Nosso time vai te responder em breve."
-    snippet = compact[:140]
-    if len(compact) > 140:
-        snippet += "..."
-    return (
-        "Recebemos sua mensagem: "
-        f"\"{snippet}\". "
-        "Nossa equipe vai te responder em breve."
-    )
-
-
 def _resolve_final_job_status(service_status: str) -> str:
     if service_status in {
         "not_configured",
@@ -134,6 +122,12 @@ def process_incoming_message(payload: dict) -> dict:
                 )
 
             inbound_text = (message.transcription or message.text_content or "").strip()
+            memory_result = ContactMemoryService().save_from_inbound_text(
+                db=db,
+                contact_id=conversation.contact_id,
+                source_message_id=message.id,
+                inbound_text=inbound_text,
+            )
             reply_result = generate_reply(
                 {
                     "conversation_id": str(conversation.id),
@@ -141,6 +135,7 @@ def process_incoming_message(payload: dict) -> dict:
                     "source_message_id": str(message.id),
                     "source_text": inbound_text,
                     "phone_number_id": payload.get("phone_number_id"),
+                    "memory_saved_keys": memory_result.get("saved_keys"),
                 }
             )
 
@@ -154,6 +149,8 @@ def process_incoming_message(payload: dict) -> dict:
                         "conversation_id": str(conversation.id),
                         "route": route,
                         "context_status": context.get("status"),
+                        "memory_status": memory_result.get("status"),
+                        "memory_saved_keys": memory_result.get("saved_keys"),
                         "transcription_status": (transcription_result or {}).get("status"),
                         "reply_status": reply_result.get("status"),
                     },
@@ -220,19 +217,33 @@ def generate_reply(payload: dict) -> dict:
     try:
         conversation_id = _parse_uuid(payload.get("conversation_id"), "conversation_id")
         source_text = str(payload.get("source_text") or "").strip()
-        reply_text = _render_auto_reply(source_text)
+        if not source_text:
+            source_text = "Mensagem recebida sem texto. Solicitar detalhes de agendamento."
 
         platform = str(payload.get("platform") or "whatsapp")
         source_message_id = str(payload.get("source_message_id") or "").strip() or None
         phone_number_id = str(payload.get("phone_number_id") or "").strip() or None
         now_utc = datetime.now(timezone.utc)
         dispatch_result: dict | None = None
+        llm_result: dict | None = None
+        reply_text: str | None = None
 
         with SessionLocal() as db:
             conversation = db.get(Conversation, conversation_id)
             if conversation is None:
                 raise ValueError(f"conversation not found: {conversation_id}")
             contact = db.get(Contact, conversation.contact_id)
+            context = MemoryService().build_context(str(conversation.id))
+
+            llm_result = LLMReplyService().generate_reply(
+                user_text=source_text,
+                context_messages=context.get("memory_items") or [],
+                key_memories=context.get("key_memories") or [],
+            )
+            llm_status = str((llm_result or {}).get("status") or "")
+            reply_text = str((llm_result or {}).get("reply_text") or "").strip()
+            if llm_status not in {"completed", "blocked_out_of_scope"} or not reply_text:
+                raise RuntimeError(f"llm_reply_generation_failed: status={llm_status}")
 
             outbound = Message(
                 conversation_id=conversation.id,
@@ -245,6 +256,8 @@ def generate_reply(payload: dict) -> dict:
                 raw_payload={
                     "source": "celery_auto_reply",
                     "source_message_id": source_message_id,
+                    "llm_status": llm_status,
+                    "llm_model": (llm_result or {}).get("model"),
                 },
                 ai_generated=True,
             )
@@ -273,6 +286,8 @@ def generate_reply(payload: dict) -> dict:
                     details={
                         "source_message_id": source_message_id,
                         "reply_message_preview": reply_text[:120],
+                        "llm_status": llm_status,
+                        "llm_model": (llm_result or {}).get("model"),
                         "dispatch_status": (dispatch_result or {}).get("status"),
                     },
                 )
@@ -287,6 +302,8 @@ def generate_reply(payload: dict) -> dict:
             "job_id": str(job_id),
             "conversation_id": str(conversation_id),
             "reply_message_id": str(outbound.id),
+            "llm_status": (llm_result or {}).get("status"),
+            "llm_model": (llm_result or {}).get("model"),
             "dispatch_status": (dispatch_result or {}).get("status"),
         }
     except Exception as exc:  # noqa: BLE001

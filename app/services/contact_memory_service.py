@@ -1,0 +1,307 @@
+from __future__ import annotations
+
+import re
+import unicodedata
+from uuid import UUID
+
+from sqlalchemy.orm import Session
+
+from app.models.contact_memory import ContactMemory
+
+
+class ContactMemoryService:
+    """Stores key customer memories while skipping ambiguous statements."""
+
+    _AMBIGUOUS_MARKERS = {
+        "talvez",
+        "nao sei",
+        "ainda estou vendo",
+        "ainda vou ver",
+        "depois vejo",
+        "vou pensar",
+        "nao tenho certeza",
+    }
+    _OLD_CUSTOMER_MARKERS = {
+        "sou cliente",
+        "cliente antigo",
+        "ja fui cliente",
+        "ja conheco",
+        "voltei",
+        "retornando",
+    }
+    _NEW_CUSTOMER_MARKERS = {
+        "cliente novo",
+        "primeira vez",
+        "nao conheco",
+        "ainda nao conheco",
+        "nunca fui",
+    }
+
+    _SERVICE_MAP = {
+        "ensaio": "ensaio_fotografico",
+        "book": "book_fotografico",
+        "casamento": "evento_casamento",
+        "gestante": "ensaio_gestante",
+        "familia": "ensaio_familia",
+        "corporativo": "ensaio_corporativo",
+        "retrato": "ensaio_retrato",
+        "video": "video",
+    }
+
+    _DAY_MARKERS = {
+        "segunda",
+        "terca",
+        "quarta",
+        "quinta",
+        "sexta",
+        "sabado",
+        "domingo",
+        "manha",
+        "tarde",
+        "noite",
+    }
+
+    _TIME_RE = re.compile(r"\b([01]?\d|2[0-3])(?::|h)([0-5]\d)?\b")
+    _PRICE_RE = re.compile(r"(r\$\s?\d+[\d\.,]*)", flags=re.IGNORECASE)
+    _DURATION_RE = re.compile(r"\b([1-9])\s*(h|hora|horas)\b")
+    _PEOPLE_RE = re.compile(r"\b(\d{1,2})\s*(pessoa|pessoas)\b")
+
+    def save_from_inbound_text(
+        self,
+        *,
+        db: Session,
+        contact_id: UUID,
+        source_message_id: UUID,
+        inbound_text: str,
+    ) -> dict:
+        analyzed = self.analyze_text(inbound_text)
+        candidates = analyzed["candidates"]
+        if not candidates:
+            return {"status": analyzed["status"], "saved_keys": []}
+
+        saved_keys: list[str] = []
+        for candidate in candidates:
+            memory_key = candidate["memory_key"]
+            existing = (
+                db.query(ContactMemory)
+                .filter(
+                    ContactMemory.contact_id == contact_id,
+                    ContactMemory.memory_key == memory_key,
+                )
+                .first()
+            )
+            if existing is None:
+                db.add(
+                    ContactMemory(
+                        contact_id=contact_id,
+                        source_message_id=source_message_id,
+                        memory_key=memory_key,
+                        memory_value=candidate["memory_value"],
+                        status="active",
+                        importance=candidate["importance"],
+                        confidence=candidate["confidence"],
+                    )
+                )
+            else:
+                existing.memory_value = candidate["memory_value"]
+                existing.source_message_id = source_message_id
+                existing.status = "active"
+                existing.importance = max(existing.importance, candidate["importance"])
+                existing.confidence = max(existing.confidence, candidate["confidence"])
+            saved_keys.append(memory_key)
+
+        return {"status": "saved", "saved_keys": saved_keys}
+
+    def analyze_text(self, inbound_text: str) -> dict:
+        cleaned = " ".join(str(inbound_text or "").split()).strip()
+        if not cleaned:
+            return {"status": "ignored_no_text", "candidates": []}
+
+        normalized = self._normalize(cleaned)
+        if self._is_ambiguous(normalized):
+            return {"status": "ignored_ambiguous", "candidates": []}
+
+        candidates = self._extract_candidates(cleaned, normalized)
+        if not candidates:
+            return {"status": "ignored_no_candidate", "candidates": []}
+
+        return {"status": "candidate_found", "candidates": candidates}
+
+    def _normalize(self, value: str) -> str:
+        lowered = value.lower()
+        ascii_value = unicodedata.normalize("NFKD", lowered).encode("ascii", "ignore").decode("ascii")
+        return " ".join(ascii_value.split())
+
+    def _is_ambiguous(self, normalized_text: str) -> bool:
+        return any(marker in normalized_text for marker in self._AMBIGUOUS_MARKERS)
+
+    def _extract_candidates(self, original_text: str, normalized_text: str) -> list[dict]:
+        candidates: list[dict] = []
+
+        if any(marker in normalized_text for marker in self._OLD_CUSTOMER_MARKERS):
+            candidates.append(
+                {
+                    "memory_key": "cliente_status",
+                    "memory_value": "antigo",
+                    "importance": 5,
+                    "confidence": 0.95,
+                }
+            )
+            candidates.append(
+                {
+                    "memory_key": "ja_conhece_estudio",
+                    "memory_value": "sim",
+                    "importance": 5,
+                    "confidence": 0.95,
+                }
+            )
+        elif any(marker in normalized_text for marker in self._NEW_CUSTOMER_MARKERS):
+            candidates.append(
+                {
+                    "memory_key": "cliente_status",
+                    "memory_value": "novo",
+                    "importance": 5,
+                    "confidence": 0.95,
+                }
+            )
+            candidates.append(
+                {
+                    "memory_key": "ja_conhece_estudio",
+                    "memory_value": "nao",
+                    "importance": 5,
+                    "confidence": 0.95,
+                }
+            )
+
+        has_foto = "foto" in normalized_text or "fotografia" in normalized_text
+        has_video = "video" in normalized_text or "filmagem" in normalized_text
+        if has_foto and has_video:
+            candidates.append(
+                {
+                    "memory_key": "tipo_projeto",
+                    "memory_value": "foto_e_video",
+                    "importance": 4,
+                    "confidence": 0.9,
+                }
+            )
+        elif has_foto:
+            candidates.append(
+                {
+                    "memory_key": "tipo_projeto",
+                    "memory_value": "foto",
+                    "importance": 4,
+                    "confidence": 0.9,
+                }
+            )
+        elif has_video:
+            candidates.append(
+                {
+                    "memory_key": "tipo_projeto",
+                    "memory_value": "video",
+                    "importance": 4,
+                    "confidence": 0.9,
+                }
+            )
+
+        for marker, canonical_service in self._SERVICE_MAP.items():
+            if marker in normalized_text:
+                candidates.append(
+                    {
+                        "memory_key": "interesse_servico",
+                        "memory_value": canonical_service,
+                        "importance": 5,
+                        "confidence": 0.9,
+                    }
+                )
+                break
+
+        if any(marker in normalized_text for marker in {"valor", "preco", "orcamento", "quanto custa"}):
+            candidates.append(
+                {
+                    "memory_key": "duvida_valor",
+                    "memory_value": "true",
+                    "importance": 3,
+                    "confidence": 0.85,
+                }
+            )
+
+        if any(marker in normalized_text for marker in {"horario", "disponibilidade", "vaga"}):
+            candidates.append(
+                {
+                    "memory_key": "duvida_disponibilidade",
+                    "memory_value": "true",
+                    "importance": 3,
+                    "confidence": 0.85,
+                }
+            )
+
+        day_hits = [marker for marker in self._DAY_MARKERS if marker in normalized_text]
+        if day_hits:
+            candidates.append(
+                {
+                    "memory_key": "preferencia_periodo",
+                    "memory_value": ", ".join(sorted(set(day_hits))),
+                    "importance": 4,
+                    "confidence": 0.8,
+                }
+            )
+
+        time_hits = [match.group(0) for match in self._TIME_RE.finditer(normalized_text)]
+        if time_hits:
+            candidates.append(
+                {
+                    "memory_key": "preferencia_horario",
+                    "memory_value": ", ".join(time_hits[:3]),
+                    "importance": 4,
+                    "confidence": 0.9,
+                }
+            )
+
+        duration_hits = [match.group(1) for match in self._DURATION_RE.finditer(normalized_text)]
+        if duration_hits:
+            first_duration = duration_hits[0]
+            candidates.append(
+                {
+                    "memory_key": "duracao_desejada_horas",
+                    "memory_value": str(first_duration),
+                    "importance": 4,
+                    "confidence": 0.92,
+                }
+            )
+
+        people_hits = [match.group(1) for match in self._PEOPLE_RE.finditer(normalized_text)]
+        if people_hits:
+            candidates.append(
+                {
+                    "memory_key": "numero_pessoas",
+                    "memory_value": str(people_hits[0]),
+                    "importance": 4,
+                    "confidence": 0.92,
+                }
+            )
+
+        price_hits = [match.group(1) for match in self._PRICE_RE.finditer(original_text)]
+        if price_hits:
+            candidates.append(
+                {
+                    "memory_key": "referencia_orcamento",
+                    "memory_value": ", ".join(price_hits[:2]),
+                    "importance": 4,
+                    "confidence": 0.9,
+                }
+            )
+
+        if "foto" in normalized_text and ("espaco" in normalized_text or "estudio" in normalized_text):
+            candidates.append(
+                {
+                    "memory_key": "quer_fotos_espaco",
+                    "memory_value": "true",
+                    "importance": 3,
+                    "confidence": 0.9,
+                }
+            )
+
+        deduped: dict[str, dict] = {}
+        for item in candidates:
+            deduped[item["memory_key"]] = item
+        return list(deduped.values())

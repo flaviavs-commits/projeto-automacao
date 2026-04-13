@@ -6,9 +6,42 @@ from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.models.contact import Contact
 from app.schemas.contact import ContactCreate, ContactRead, ContactUpdate
+from app.services.customer_identity_service import CustomerIdentityService
 
 
 router = APIRouter(prefix="/contacts", tags=["contacts"])
+identity_service = CustomerIdentityService()
+
+
+def _sync_contact_identities(db: Session, contact: Contact) -> None:
+    if contact.phone:
+        identity_service.upsert_identity_for_contact(
+            db=db,
+            contact=contact,
+            platform="whatsapp",
+            platform_user_id=contact.phone,
+        )
+    if contact.instagram_user_id:
+        identity_service.upsert_identity_for_contact(
+            db=db,
+            contact=contact,
+            platform="instagram",
+            platform_user_id=contact.instagram_user_id,
+        )
+    if contact.tiktok_user_id:
+        identity_service.upsert_identity_for_contact(
+            db=db,
+            contact=contact,
+            platform="tiktok",
+            platform_user_id=contact.tiktok_user_id,
+        )
+    if contact.youtube_channel_id:
+        identity_service.upsert_identity_for_contact(
+            db=db,
+            contact=contact,
+            platform="youtube",
+            platform_user_id=contact.youtube_channel_id,
+        )
 
 
 @router.get("", response_model=list[ContactRead])
@@ -35,6 +68,8 @@ def create_contact(payload: ContactCreate, db: Session = Depends(get_db)) -> Con
         email=payload.email,
     )
     db.add(contact)
+    db.flush()
+    _sync_contact_identities(db, contact)
     db.commit()
     db.refresh(contact)
     return contact
@@ -56,6 +91,7 @@ def update_contact(contact_id: UUID, payload: ContactUpdate, db: Session = Depen
     for field, value in updates.items():
         setattr(contact, field, value)
 
+    _sync_contact_identities(db, contact)
     db.commit()
     db.refresh(contact)
     return contact
