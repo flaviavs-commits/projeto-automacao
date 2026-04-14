@@ -2,10 +2,13 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import time
 import uuid
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from hashlib import sha256
+from hmac import new as hmac_new
 from typing import Any
 
 import httpx
@@ -113,6 +116,7 @@ def send_message_and_wait_reply(
     wa_id: str,
     profile_name: str,
     phone_number_id: str,
+    app_secret: str,
     user_text: str,
     timeout_seconds: int,
     poll_interval_seconds: float,
@@ -127,13 +131,27 @@ def send_message_and_wait_reply(
         phone_number_id=phone_number_id,
     )
 
-    webhook_response = client.post(f"{base_url.rstrip('/')}/webhooks/meta", json=payload)
+    headers: dict[str, str] = {"Content-Type": "application/json"}
+    body_text = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
+    if app_secret:
+        digest = hmac_new(app_secret.encode("utf-8"), body_text.encode("utf-8"), sha256).hexdigest()
+        headers["X-Hub-Signature-256"] = f"sha256={digest}"
+    webhook_response = client.post(
+        f"{base_url.rstrip('/')}/webhooks/meta",
+        content=body_text.encode("utf-8"),
+        headers=headers,
+    )
     if webhook_response.status_code != 202:
         detail: str
         try:
             detail = json.dumps(webhook_response.json(), ensure_ascii=True)
         except Exception:  # noqa: BLE001
             detail = webhook_response.text
+        if webhook_response.status_code == 401 and "Invalid Meta signature" in detail:
+            raise RuntimeError(
+                "webhook_failed status=401 invalid_meta_signature "
+                "(use --app-secret or configure META_APP_SECRET/INSTAGRAM_APP_SECRET local env)"
+            )
         raise RuntimeError(f"webhook_failed status={webhook_response.status_code} detail={detail[:500]}")
 
     deadline = time.time() + max(5, timeout_seconds)
@@ -189,6 +207,7 @@ def _run_once(args: argparse.Namespace) -> int:
             wa_id=args.wa_id,
             profile_name=args.profile_name,
             phone_number_id=str(args.phone_number_id or "").strip(),
+            app_secret=str(args.app_secret or "").strip(),
             user_text=user_text,
             timeout_seconds=args.reply_timeout,
             poll_interval_seconds=args.poll_interval,
@@ -205,6 +224,8 @@ def _run_interactive(args: argparse.Namespace) -> int:
     print(f"WA ID: {args.wa_id}")
     if str(args.phone_number_id or "").strip():
         print(f"Phone Number ID: {args.phone_number_id}")
+    if str(args.app_secret or "").strip():
+        print("App Secret: provided")
     print("")
 
     with httpx.Client(timeout=max(15.0, float(args.http_timeout)), trust_env=bool(args.trust_env)) as client:
@@ -222,6 +243,7 @@ def _run_interactive(args: argparse.Namespace) -> int:
                     wa_id=args.wa_id,
                     profile_name=args.profile_name,
                     phone_number_id=str(args.phone_number_id or "").strip(),
+                    app_secret=str(args.app_secret or "").strip(),
                     user_text=user_text,
                     timeout_seconds=args.reply_timeout,
                     poll_interval_seconds=args.poll_interval,
@@ -254,6 +276,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--phone-number-id",
         default=DEFAULT_PHONE_NUMBER_ID,
         help="Phone Number ID Meta opcional para melhorar dispatch outbound",
+    )
+    parser.add_argument(
+        "--app-secret",
+        default=(os.getenv("META_APP_SECRET", "").strip() or os.getenv("INSTAGRAM_APP_SECRET", "").strip()),
+        help="App Secret Meta para assinar webhook de teste (X-Hub-Signature-256)",
     )
     parser.add_argument(
         "--reply-timeout",

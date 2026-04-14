@@ -259,6 +259,12 @@ road_test\chat_railway_prod.cmd --once "quero agendar ensaio e saber valor de 2 
 road_test\chat_railway_prod.cmd --phone-number-id 1234567890 --once "teste com dispatch"
 ```
 
+- Se o webhook estiver exigindo assinatura (`Invalid Meta signature`), informe tambem o app secret:
+
+```cmd
+road_test\chat_railway_prod.cmd --app-secret SEU_META_APP_SECRET --once "teste assinado"
+```
+
 - Observacao de rede:
   - o script ignora proxy de ambiente por padrao (evita falha quando `HTTP_PROXY`/`HTTPS_PROXY` apontam para localhost invalido);
   - use `--trust-env` somente se voce realmente precisar forcar proxy corporativo.
