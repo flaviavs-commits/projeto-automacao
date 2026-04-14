@@ -992,3 +992,34 @@ Validacao da rodada:
 
 Proximo passo recomendado desta frente:
 - Em producao, manter `LLM_MODEL` leve (ex.: `qwen2.5:0.5b-instruct`) e definir `LLM_QUALITY_FALLBACK_MODEL=qwen2.5:1.5b-instruct`, monitorando `quality_retry_status` e `llm_model` nos logs do worker para calibrar custo x qualidade.
+
+## Registro de task - 2026-04-14 (review + teste em producao Railway da frente LLM)
+
+Task executada: revisao tecnica e validacao em producao da mudanca de qualidade com fallback de modelo.
+
+Deploy executado:
+- commit `a580574` enviado para `origin/main`.
+- redeploy manual via Railway CLI:
+  - `projeto-automacao` -> deployment `256a9d92-8636-4d51-a2bc-d312c78c6139`
+  - `worker` -> deployment `30e9419e-4ff2-4561-a5c9-e4c04107e761`
+- estado final: todos os servicos em `SUCCESS`.
+
+Teste em producao:
+- `GET /health` -> `200`, `status=ok`, `database=ok`, `redis=ok`.
+- webhook real de smoke:
+  - `POST /webhooks/meta` com mensagem `wamid.prod.llm.20260414.113439`
+  - retorno `202 accepted` com `messages_created=1` e `messages_queued=1`.
+- HTTP log de producao confirmou request:
+  - `POST /webhooks/meta` -> `202` (deployment API novo).
+- worker log confirmou processamento completo:
+  - `Task process_incoming_message ... status=completed`.
+- worker log confirmou 2 chamadas LLM `POST /api/chat 200` na mesma execucao.
+- evidencia de fallback/qualidade:
+  - inbound `message_id=1d3529b6-88a9-4148-8c4f-70d36a7ad95a`
+  - outbound `message_id=8d6a5119-2b9b-496d-bd59-28f6e330f862`
+  - `raw_payload.llm_status=completed`
+  - `raw_payload.llm_model=qwen2.5:1.5b-instruct`
+  - configuracao base em producao permanece `LLM_MODEL=qwen2.5:0.5b-instruct`, indicando ativacao do fallback no fluxo real.
+
+Observacao operacional:
+- envio outbound WhatsApp continuou com `dispatch_result=missing_credentials` por falta de credenciais de envio (`META_ACCESS_TOKEN`/token runtime + `META_WHATSAPP_PHONE_NUMBER_ID`), sem impedir o processamento interno do LLM.

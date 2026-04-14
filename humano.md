@@ -694,3 +694,29 @@ Validacao executada:
 - `cmd /c .\\.venv\\Scripts\\python.exe -m compileall app road_test` -> ok.
 - `cmd /c .\\.venv\\Scripts\\python.exe qa_tudo.py --no-dashboard --no-pause` -> `PASS=8`, `WARN=1`, `FAIL=0`.
   - warn unico foi remoto (Railway inacessivel no ambiente local desta sessao).
+
+## Registro de task - 2026-04-14 (review e teste em producao no Railway)
+
+Task executada: revisar a mudanca de qualidade LLM e validar em producao ponta a ponta.
+
+O que executei:
+- publiquei o commit `a580574` no `main`;
+- rodei deploy manual no Railway para garantir que API e worker usassem o codigo novo:
+  - API: `256a9d92-8636-4d51-a2bc-d312c78c6139`
+  - worker: `30e9419e-4ff2-4561-a5c9-e4c04107e761`
+- confirmei todos os servicos em `SUCCESS`.
+
+Teste real em producao:
+- `GET /health` respondeu `200` com `status=ok`.
+- enviei webhook real de teste (`wamid.prod.llm.20260414.113439`) e recebi `202`.
+- logs HTTP da API confirmaram `POST /webhooks/meta -> 202`.
+- logs do worker confirmaram:
+  - `process_incoming_message` concluido;
+  - duas chamadas `POST /api/chat` com `200` (indicando tentativa principal + fallback).
+- conferi mensagem outbound gerada:
+  - `llm_status=completed`
+  - `llm_model=qwen2.5:1.5b-instruct`
+  - com `LLM_MODEL` base de producao em `0.5b`, validando fallback de qualidade em runtime real.
+
+Observacao:
+- envio externo para WhatsApp ainda retorna `missing_credentials` (falta de token/phone number id), mas isso nao bloqueia o pipeline interno de resposta com LLM.
