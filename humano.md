@@ -720,3 +720,23 @@ Teste real em producao:
 
 Observacao:
 - envio externo para WhatsApp ainda retorna `missing_credentials` (falta de token/phone number id), mas isso nao bloqueia o pipeline interno de resposta com LLM.
+
+## Registro de task - 2026-04-14 (CLI de conversa com Railway em producao)
+
+Task executada: criar um comando simples para voce conversar com o LLM que esta rodando no Railway.
+
+O que foi criado:
+- `road_test/chat_railway_prod.py`
+  - modo interativo para conversar em loop;
+  - modo `--once` para uma pergunta unica e retorno JSON.
+- `road_test/chat_railway_prod.cmd`
+  - atalho para executar usando a `.venv`.
+- README atualizado com os comandos novos.
+
+Teste real feito:
+- rodei:
+  - `road_test\\chat_railway_prod.cmd --once "teste rapido via cli producao railway"`
+- resultado:
+  - `llm_status=completed`
+  - `llm_model=qwen2.5:0.5b-instruct`
+  - resposta outbound criada com ids de rastreio no JSON.

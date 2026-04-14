@@ -74,22 +74,49 @@ def _require_meta_oauth_configuration() -> None:
         )
 
 
-def _extract_ig_account_from_pages_payload(pages_payload: dict) -> tuple[str | None, str | None]:
+def _extract_meta_assets_from_pages_payload(
+    pages_payload: dict,
+) -> tuple[str | None, str | None, str | None, str | None]:
     data = pages_payload.get("data")
     if not isinstance(data, list):
-        return None, None
+        return None, None, None, None
 
+    whatsapp_business_account_id = None
+    whatsapp_phone_number_id = None
     for page in data:
         if not isinstance(page, dict):
             continue
+
         ig = page.get("instagram_business_account")
-        if not isinstance(ig, dict):
-            continue
-        ig_id = str(ig.get("id") or "").strip() or None
-        ig_username = str(ig.get("username") or "").strip() or None
+        if isinstance(ig, dict):
+            ig_id = str(ig.get("id") or "").strip() or None
+            ig_username = str(ig.get("username") or "").strip() or None
+        else:
+            ig_id = None
+            ig_username = None
+
+        waba = page.get("whatsapp_business_account")
+        if isinstance(waba, dict):
+            if whatsapp_business_account_id is None:
+                whatsapp_business_account_id = str(waba.get("id") or "").strip() or None
+            phone_numbers = waba.get("phone_numbers")
+            if isinstance(phone_numbers, list) and phone_numbers:
+                for item in phone_numbers:
+                    if not isinstance(item, dict):
+                        continue
+                    candidate = str(item.get("id") or "").strip()
+                    if candidate:
+                        whatsapp_phone_number_id = candidate
+                        break
+            if whatsapp_phone_number_id is None:
+                candidate_direct = str(waba.get("phone_number_id") or "").strip()
+                if candidate_direct:
+                    whatsapp_phone_number_id = candidate_direct
+
         if ig_id or ig_username:
-            return ig_id, ig_username
-    return None, None
+            return ig_id, ig_username, whatsapp_business_account_id, whatsapp_phone_number_id
+
+    return None, None, whatsapp_business_account_id, whatsapp_phone_number_id
 
 
 def _build_state_payload(*, redirect_uri: str, scopes: str) -> dict:
@@ -318,7 +345,12 @@ def oauth_meta_callback(
     if pages_result.get("status") == "ok" and isinstance(pages_result.get("body"), dict):
         pages_body = pages_result.get("body") or {}
 
-    instagram_business_account_id, instagram_username = _extract_ig_account_from_pages_payload(
+    (
+        instagram_business_account_id,
+        instagram_username,
+        whatsapp_business_account_id,
+        whatsapp_phone_number_id,
+    ) = _extract_meta_assets_from_pages_payload(
         pages_body
     )
     encrypted_access_token = encrypt_secret(
@@ -364,6 +396,8 @@ def oauth_meta_callback(
         "oauth_scopes": requested_scopes.split(",") if requested_scopes else [],
         "instagram_business_account_id": instagram_business_account_id,
         "instagram_username": instagram_username,
+        "whatsapp_business_account_id": whatsapp_business_account_id,
+        "whatsapp_phone_number_id": whatsapp_phone_number_id,
         "pages_result_status": pages_result.get("status"),
     }
 
@@ -383,6 +417,8 @@ def oauth_meta_callback(
                 ),
                 "instagram_business_account_id": instagram_business_account_id,
                 "instagram_username": instagram_username,
+                "whatsapp_business_account_id": whatsapp_business_account_id,
+                "whatsapp_phone_number_id": whatsapp_phone_number_id,
             },
         )
     )
@@ -399,6 +435,8 @@ def oauth_meta_callback(
         "token_expires_at": token_expires_at.isoformat() if token_expires_at is not None else None,
         "instagram_business_account_id": instagram_business_account_id,
         "instagram_username": instagram_username,
+        "whatsapp_business_account_id": whatsapp_business_account_id,
+        "whatsapp_phone_number_id": whatsapp_phone_number_id,
         "redirect_uri": redirect_uri,
         "next_steps": [
             "Token salvo em platform_accounts e pronto para fallback automatico dos servicos Meta",

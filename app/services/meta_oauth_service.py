@@ -78,7 +78,11 @@ class MetaOAuthService(BaseExternalService):
             method="GET",
             url=self._graph_url("me/accounts"),
             params={
-                "fields": "id,name,instagram_business_account{id,username}",
+                "fields": (
+                    "id,name,"
+                    "instagram_business_account{id,username},"
+                    "whatsapp_business_account{id,name,phone_numbers{id,display_phone_number,verified_name}}"
+                ),
                 "access_token": access_token,
             },
         )

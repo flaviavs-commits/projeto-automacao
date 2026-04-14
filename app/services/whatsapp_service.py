@@ -29,6 +29,7 @@ class WhatsAppService(BaseExternalService):
         phone_number_id = str(
             payload.get("phone_number_id")
             or settings.meta_whatsapp_phone_number_id
+            or persisted_credentials.get("whatsapp_phone_number_id")
         ).strip()
         if not access_token or not phone_number_id:
             return self.missing_credentials(

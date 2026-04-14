@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 from app.core.config import settings
 from app.core.database import get_db
 from app.core.logging import get_logger
-from app.core.security import safe_compare
+from app.core.security import safe_compare, verify_meta_signature
 from app.models.audit_log import AuditLog
 from app.models.conversation import Conversation
 from app.models.message import Message
@@ -224,6 +224,28 @@ async def receive_meta_webhook(
     request: Request,
     db: Session = Depends(get_db),
 ) -> dict:
+    raw_body = await request.body()
+    effective_meta_secret = settings.effective_meta_app_secret.strip()
+    if effective_meta_secret:
+        signature_header = request.headers.get("X-Hub-Signature-256")
+        signature_ok = verify_meta_signature(
+            body=raw_body,
+            signature_header=signature_header,
+            app_secret=effective_meta_secret,
+        )
+        if not signature_ok:
+            logger.warning(
+                "meta_webhook_invalid_signature",
+                extra={
+                    "path": str(request.url.path),
+                    "environment": settings.app_env,
+                },
+            )
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid Meta signature",
+            )
+
     if not settings.meta_enabled:
         logger.info(
             "meta_webhook_ignored",

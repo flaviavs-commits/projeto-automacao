@@ -129,6 +129,7 @@ Copie `.env.example` para `.env` e ajuste os valores locais. As variaveis suport
 - Posts de plataformas Meta em status de fila (`draft`, `queued`, `scheduled`, etc.) passam automaticamente para `pending_meta_review`.
 - Se TikTok estiver sem setup (`TIKTOK_ENABLED=false` ou sem key/secret), posts TikTok equivalentes passam para `pending_tiktok_setup`.
 - `GET /health` exibe `integrations` com `meta_runtime_enabled`, `meta_cached_token_ready` e `tiktok_runtime_enabled` para observabilidade.
+- `GET /health` tambem exibe `whatsapp_dispatch_ready` e `whatsapp_cached_phone_number_ready`.
 
 ## Instalar dependencias
 
@@ -237,6 +238,30 @@ road_test\iniciar_leve_local.cmd
 ```cmd
 road_test\parar_tudo_local.cmd
 ```
+
+## Chat em producao (Railway)
+
+- Chat interativo direto no pipeline real (API + worker + llm-runtime):
+
+```cmd
+road_test\chat_railway_prod.cmd
+```
+
+- Rodada unica (retorna JSON com ids/status/modelo):
+
+```cmd
+road_test\chat_railway_prod.cmd --once "quero agendar ensaio e saber valor de 2 horas"
+```
+
+- Se quiser melhorar chance de dispatch outbound, informe o `phone_number_id`:
+
+```cmd
+road_test\chat_railway_prod.cmd --phone-number-id 1234567890 --once "teste com dispatch"
+```
+
+- Observacao de rede:
+  - o script ignora proxy de ambiente por padrao (evita falha quando `HTTP_PROXY`/`HTTPS_PROXY` apontam para localhost invalido);
+  - use `--trust-env` somente se voce realmente precisar forcar proxy corporativo.
 
 ## Migracoes
 

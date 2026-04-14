@@ -14,6 +14,25 @@ def safe_compare(value: str, expected: str) -> bool:
     return compare_digest(value, expected)
 
 
+def verify_meta_signature(*, body: bytes, signature_header: str | None, app_secret: str) -> bool:
+    secret = str(app_secret or "").strip()
+    if not secret:
+        return True
+
+    provided = str(signature_header or "").strip()
+    if not provided or "=" not in provided:
+        return False
+
+    algo, provided_digest = provided.split("=", 1)
+    if algo.strip().lower() != "sha256":
+        return False
+    if not provided_digest:
+        return False
+
+    expected_digest = hmac_new(secret.encode("utf-8"), body, sha256).hexdigest()
+    return compare_digest(provided_digest.strip().lower(), expected_digest.lower())
+
+
 def _derive_fernet(secret: str) -> Fernet:
     normalized = secret.strip()
     if not normalized:

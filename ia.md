@@ -1023,3 +1023,28 @@ Teste em producao:
 
 Observacao operacional:
 - envio outbound WhatsApp continuou com `dispatch_result=missing_credentials` por falta de credenciais de envio (`META_ACCESS_TOKEN`/token runtime + `META_WHATSAPP_PHONE_NUMBER_ID`), sem impedir o processamento interno do LLM.
+
+## Registro de task - 2026-04-14 (CLI para interagir com LLM em producao via Railway)
+
+Task executada: criacao de ferramenta de chat para interacao direta com o pipeline real em producao (webhook + worker + llm-runtime).
+
+Entregas:
+- Novo script Python:
+  - `road_test/chat_railway_prod.py`
+  - modos:
+    - interativo (`input` em loop);
+    - execucao unica com `--once` (retorno em JSON).
+- Novo atalho CMD:
+  - `road_test/chat_railway_prod.cmd`
+- README atualizado com uso:
+  - `road_test\\chat_railway_prod.cmd`
+  - `road_test\\chat_railway_prod.cmd --once "..."`.
+
+Validacao executada:
+- `cmd /c .\\.venv\\Scripts\\python.exe -m compileall road_test\\chat_railway_prod.py` -> sucesso.
+- teste real em producao:
+  - comando: `road_test\\chat_railway_prod.cmd --once "teste rapido via cli producao railway"`
+  - retorno com sucesso:
+    - `llm_status=completed`
+    - `llm_model=qwen2.5:0.5b-instruct`
+    - `external_message_id`, `inbound_message_id` e `outbound_message_id` gerados.

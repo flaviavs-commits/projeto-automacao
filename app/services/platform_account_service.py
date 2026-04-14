@@ -63,6 +63,10 @@ class PlatformAccountService:
         instagram_business_account_id = (
             str(metadata.get("instagram_business_account_id") or "").strip() or None
         )
+        whatsapp_business_account_id = (
+            str(metadata.get("whatsapp_business_account_id") or "").strip() or None
+        )
+        whatsapp_phone_number_id = str(metadata.get("whatsapp_phone_number_id") or "").strip() or None
         token_present = bool(str(access_token or "").strip())
         token_expired = self._is_meta_token_expired(account.token_expires_at) if token_present else False
         token_usable = token_present and not token_expired
@@ -77,6 +81,9 @@ class PlatformAccountService:
             "token_usable": token_usable,
             "instagram_business_account_id": instagram_business_account_id,
             "instagram_account_ready": bool(instagram_business_account_id),
+            "whatsapp_business_account_id": whatsapp_business_account_id,
+            "whatsapp_phone_number_id": whatsapp_phone_number_id,
+            "whatsapp_phone_number_ready": bool(whatsapp_phone_number_id),
             "token_expires_at": (
                 account.token_expires_at.isoformat() if account.token_expires_at is not None else None
             ),
@@ -92,5 +99,6 @@ class PlatformAccountService:
             "external_account_id": snapshot.get("external_account_id"),
             "access_token": str(snapshot.get("access_token") or ""),
             "instagram_business_account_id": snapshot.get("instagram_business_account_id"),
+            "whatsapp_phone_number_id": snapshot.get("whatsapp_phone_number_id"),
             "token_expires_at": snapshot.get("token_expires_at"),
         }

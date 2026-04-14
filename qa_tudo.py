@@ -20,12 +20,13 @@ from pathlib import Path
 from typing import Any, Callable, Iterator
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlparse
-from urllib.request import Request, urlopen
+from urllib.request import ProxyHandler, Request, build_opener
 
 
 ROOT = Path(__file__).resolve().parent
 DEFAULT_BASE_URL = "https://projeto-automacao-production.up.railway.app"
 REPORT_PATH = ROOT / "qa_report_latest.json"
+_PROXYLESS_HTTP_OPENER = build_opener(ProxyHandler({}))
 
 EXPECTED_ROUTES = [
     "/",
@@ -631,7 +632,7 @@ def check_local_smoke() -> tuple[str, str]:
 
 def _http_get_json(url: str, timeout_seconds: int = 10) -> tuple[int, Any]:
     req = Request(url=url, method="GET", headers={"User-Agent": "qa-tudo/2.0"})
-    with urlopen(req, timeout=timeout_seconds) as response:
+    with _PROXYLESS_HTTP_OPENER.open(req, timeout=timeout_seconds) as response:
         status = int(response.status)
         raw = response.read().decode("utf-8", errors="replace")
         try:
