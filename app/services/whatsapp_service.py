@@ -20,22 +20,22 @@ class WhatsAppService(BaseExternalService):
         if not settings.meta_enabled:
             return self.integration_disabled("send_text_message", "meta_disabled")
 
-        persisted_credentials = PlatformAccountService().get_latest_meta_credentials()
+        resolved_credentials = PlatformAccountService().resolve_meta_credentials(
+            preferred_phone_number_id=str(payload.get("phone_number_id") or "").strip() or None,
+        )
         access_token = str(
             payload.get("access_token")
-            or settings.meta_access_token
-            or persisted_credentials.get("access_token")
+            or resolved_credentials.get("access_token")
         ).strip()
         phone_number_id = str(
             payload.get("phone_number_id")
-            or settings.meta_whatsapp_phone_number_id
-            or persisted_credentials.get("whatsapp_phone_number_id")
+            or resolved_credentials.get("phone_number_id")
         ).strip()
         if not access_token or not phone_number_id:
             return self.missing_credentials(
                 "send_text_message",
                 [
-                    "META_ACCESS_TOKEN (or OAuth stored token)",
+                    "OAuth persisted token (or META_ACCESS_TOKEN fallback)",
                     "META_WHATSAPP_PHONE_NUMBER_ID",
                 ],
             )

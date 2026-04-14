@@ -4,6 +4,7 @@ import argparse
 import json
 import logging
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -14,7 +15,7 @@ import traceback
 import webbrowser
 from contextlib import contextmanager
 from dataclasses import asdict, dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any, Callable, Iterator
@@ -23,7 +24,8 @@ from urllib.parse import urlparse
 from urllib.request import ProxyHandler, Request, build_opener
 
 
-ROOT = Path(__file__).resolve().parent
+BASE_DIR = Path(__file__).resolve().parent
+ROOT = Path.cwd() if getattr(sys, "frozen", False) else BASE_DIR
 DEFAULT_BASE_URL = "https://projeto-automacao-production.up.railway.app"
 REPORT_PATH = ROOT / "qa_report_latest.json"
 _PROXYLESS_HTTP_OPENER = build_opener(ProxyHandler({}))
@@ -140,6 +142,206 @@ class RemoteRouteProbe:
     unreachable: bool
 
 
+@dataclass(frozen=True)
+class LocalLogicHarness:
+    app: Any
+    session_factory: Any
+    queue_calls: list[dict[str, Any]]
+
+
+def _extract_first_match(patterns: list[str], text: str) -> str | None:
+    for pattern in patterns:
+        match = re.search(pattern, text, flags=re.IGNORECASE)
+        if match:
+            return str(match.group(1))
+    return None
+
+
+def _extract_error_code(details: str) -> str:
+    http_code = _extract_first_match(
+        [
+            r"\bHTTP\s+(\d{3})\b",
+            r"\bstatus(?:_code)?[=: ]+(\d{3})\b",
+            r"\b(\d{3})\s+Unauthorized\b",
+        ],
+        details,
+    )
+    meta_code = _extract_first_match(
+        [
+            r'"code"\s*:\s*(\d+)',
+            r"'code'\s*:\s*(\d+)",
+            r"\bcode[=: ]+(\d+)\b",
+        ],
+        details,
+    )
+    subcode = _extract_first_match(
+        [
+            r'"error_subcode"\s*:\s*(\d+)',
+            r'"subcode"\s*:\s*(\d+)',
+            r"\bsubcode[=: ]+(\d+)\b",
+        ],
+        details,
+    )
+
+    parts: list[str] = []
+    if http_code:
+        parts.append(f"HTTP {http_code}")
+    if meta_code and subcode:
+        parts.append(f"META {meta_code}/{subcode}")
+    elif meta_code:
+        parts.append(f"META {meta_code}")
+    return " | ".join(parts) if parts else "N/A"
+
+
+def _extract_where(scope: str, name: str, details: str) -> str:
+    route_match = re.search(r"\b(GET|POST|PUT|DELETE|PATCH)\s+(/[^\s\"']+)", details)
+    if route_match:
+        method = str(route_match.group(1)).upper()
+        route = str(route_match.group(2))
+        return f"{method} {route}"
+    if "graph.facebook.com" in details.lower():
+        return "Meta Graph API"
+    if "railway" in details.lower():
+        return "Railway CLI"
+    return f"{scope} > {name}"
+
+
+def _simple_error_explanation(details: str) -> tuple[str, str]:
+    text = details.lower()
+
+    if "131030" in text or "allowed list" in text:
+        return (
+            "A Meta recusou o envio porque esse numero destino nao esta liberado para teste.",
+            "Numero do cliente nao foi adicionado na lista de destinatarios permitidos do WhatsApp Cloud API.",
+        )
+    if "instagram" in text and "inbound_count=0" in text:
+        return (
+            "Nao entrou nenhuma DM do Instagram no sistema no periodo validado.",
+            "Webhook do Instagram nao esta assinando/entregando eventos de mensagens, ou permissao do app esta incompleta.",
+        )
+    if "meta_webhook_invalid_signature" in text or ("/webhooks/meta" in text and "401" in text):
+        return (
+            "A Meta tentou entregar evento, mas seu webhook recusou por assinatura invalida.",
+            "App Secret diferente entre Meta App e variavel META_APP_SECRET no servidor.",
+        )
+    if "sem prova recente de entrada" in text or "inbound_status=warn" in text:
+        return (
+            "Nao houve evento recente de entrada para provar webhook ativo agora.",
+            "Sem mensagem/teste recente no periodo, embora a configuracao possa estar correta.",
+        )
+    if "session has expired" in text or "error validating access token" in text or "subcode\": 463" in text:
+        return (
+            "A Meta recusou a chamada porque o token expirou.",
+            "Token OAuth vencido; precisa renovar token e usar credencial persistida valida.",
+        )
+    if "requires pages_manage_metadata permission" in text or "permission" in text:
+        return (
+            "A chamada foi negada por falta de permissao.",
+            "Escopo/permissao do app nao concedido (ex.: pages_manage_metadata).",
+        )
+    if "does not have the capability" in text:
+        return (
+            "O app nao tem recurso habilitado para essa API.",
+            "Capability/produto de Instagram Messaging nao habilitado/aprovado para o app.",
+        )
+    if "could not resolve host" in text or "connection refused" in text or "timed out" in text:
+        return (
+            "Nao foi possivel conectar no servico externo.",
+            "Problema de rede/DNS/firewall ou servico temporariamente indisponivel.",
+        )
+    if "redis" in text and "error" in text:
+        return (
+            "A fila Redis falhou ou ficou indisponivel.",
+            "Credencial/host Redis invalido, ou indisponibilidade de rede.",
+        )
+    if "db" in text or "database" in text:
+        return (
+            "A conexao com banco de dados falhou.",
+            "Banco indisponivel, URL incorreta ou timeout de conexao.",
+        )
+    return (
+        "O teste encontrou um erro tecnico e o fluxo nao ficou confiavel.",
+        "Falha nao classificada automaticamente; verificar detalhe tecnico bruto.",
+    )
+
+
+def _build_error_entry(scope: str, name: str, status: str, details: str) -> dict[str, str]:
+    simple, likely = _simple_error_explanation(details)
+    fbtrace = _extract_first_match([r'"fbtrace_id"\s*:\s*"([^"]+)"'], details) or ""
+    technical = details.strip() or "Sem detalhe tecnico."
+    if fbtrace and "fbtrace_id" not in technical:
+        technical = f"{technical} | fbtrace_id={fbtrace}"
+    return {
+        "status": status,
+        "scope": scope,
+        "check_name": name,
+        "where": _extract_where(scope, name, technical),
+        "error_code": _extract_error_code(technical),
+        "simple_explanation": simple,
+        "most_likely_cause": likely,
+        "technical_error": technical[:1800],
+    }
+
+
+def _derive_error_entries_from_checks(checks: list[dict[str, Any]]) -> list[dict[str, str]]:
+    items: list[dict[str, str]] = []
+    for check in checks:
+        status = str(check.get("status") or "")
+        if status not in {"WARN", "FAIL"}:
+            continue
+        items.append(
+            _build_error_entry(
+                scope=str(check.get("scope") or "desconhecido"),
+                name=str(check.get("name") or "check"),
+                status=status,
+                details=str(check.get("details") or ""),
+            )
+        )
+    return items
+
+
+def _derive_error_entries_from_results(results: list[CheckResult]) -> list[dict[str, str]]:
+    checks = [
+        {
+            "scope": result.scope,
+            "name": result.name,
+            "status": result.status,
+            "details": result.details,
+        }
+        for result in results
+    ]
+    return _derive_error_entries_from_checks(checks)
+
+
+def _error_totals(errors: list[dict[str, str]]) -> dict[str, int]:
+    totals = {"WARN": 0, "FAIL": 0}
+    for item in errors:
+        status = str(item.get("status") or "")
+        if status in totals:
+            totals[status] += 1
+    return totals
+
+
+def _build_plain_summary(
+    totals: dict[str, int],
+    errors: list[dict[str, str]],
+) -> str:
+    fail = int(totals.get("FAIL", 0))
+    warn = int(totals.get("WARN", 0))
+    passed = int(totals.get("PASS", 0))
+    if fail == 0 and warn == 0:
+        return (
+            f"Ambiente saudavel: {passed} checks passaram e nao houve erros relevantes."
+        )
+    if errors:
+        first = next((item for item in errors if item.get("status") == "FAIL"), errors[0])
+        return (
+            f"Existem problemas reais ({fail} falhas, {warn} alertas). "
+            f"Principal agora: {first.get('simple_explanation')}"
+        )
+    return f"Existem problemas reais ({fail} falhas, {warn} alertas) e exigem correcao."
+
+
 class DashboardState:
     def __init__(self) -> None:
         self._lock = threading.Lock()
@@ -149,6 +351,7 @@ class DashboardState:
             "updated_at": None,
             "finished_at": None,
             "message": "Aguardando inicio do QA.",
+            "plain_summary": "Ainda sem resultados. O QA vai explicar problemas em linguagem simples.",
             "checks": [],
             "roadmap": list(ROADMAP_ITEMS),
         }
@@ -206,6 +409,9 @@ class DashboardState:
             snap = json.loads(json.dumps(self._state, ensure_ascii=True))
         snap["totals"] = self._totals(snap["checks"])
         snap["roadmap_totals"] = self._totals(snap["roadmap"])
+        snap["errors"] = _derive_error_entries_from_checks(snap["checks"])
+        snap["error_totals"] = _error_totals(snap["errors"])
+        snap["plain_summary"] = _build_plain_summary(snap["totals"], snap["errors"])
         return snap
 
     @staticmethod
@@ -330,6 +536,9 @@ class QARunner:
 
 
 def maybe_reexec_in_venv(argv: list[str]) -> int | None:
+    if getattr(sys, "frozen", False):
+        return None
+
     if "--no-reexec" in argv:
         return None
 
@@ -347,13 +556,42 @@ def maybe_reexec_in_venv(argv: list[str]) -> int | None:
     return subprocess.call(cmd, cwd=str(ROOT))
 
 
-def run_subprocess(command: list[str], timeout: int = 120) -> tuple[int, str, str]:
+def run_subprocess(
+    command: list[str],
+    timeout: int = 120,
+    *,
+    clear_proxy: bool = False,
+) -> tuple[int, str, str]:
+    resolved_command = list(command)
+    if (
+        resolved_command
+        and resolved_command[0] == sys.executable
+        and getattr(sys, "frozen", False)
+    ):
+        venv_python = ROOT / ".venv" / "Scripts" / "python.exe"
+        if venv_python.exists():
+            resolved_command[0] = str(venv_python)
+
+    env = None
+    if clear_proxy:
+        env = os.environ.copy()
+        for key in (
+            "HTTP_PROXY",
+            "HTTPS_PROXY",
+            "ALL_PROXY",
+            "http_proxy",
+            "https_proxy",
+            "all_proxy",
+        ):
+            env.pop(key, None)
+
     proc = subprocess.run(
-        command,
+        resolved_command,
         cwd=str(ROOT),
         capture_output=True,
         text=True,
         timeout=timeout,
+        env=env,
     )
     return proc.returncode, proc.stdout.strip(), proc.stderr.strip()
 
@@ -417,6 +655,186 @@ def check_registered_routes() -> tuple[str, str]:
     return "PASS", f"{len(EXPECTED_ROUTES)} rotas esperadas registradas"
 
 
+def _extract_markdown_section(markdown_text: str, heading: str) -> str:
+    lines = markdown_text.splitlines()
+    start = None
+    heading_norm = heading.strip().lower()
+    for idx, line in enumerate(lines):
+        if line.strip().lower() == heading_norm:
+            start = idx + 1
+            break
+    if start is None:
+        return ""
+
+    collected: list[str] = []
+    for line in lines[start:]:
+        stripped = line.strip()
+        if stripped.startswith("## "):
+            break
+        collected.append(line)
+    return "\n".join(collected).strip()
+
+
+def check_scope_objective_alignment() -> tuple[str, str]:
+    readme_path = ROOT / "README.md"
+    ia_path = ROOT / "ia.md"
+    if not readme_path.exists() or not ia_path.exists():
+        return "FAIL", "README.md ou ia.md ausente"
+
+    readme_text = readme_path.read_text(encoding="utf-8", errors="replace")
+    ia_text = ia_path.read_text(encoding="utf-8", errors="replace")
+
+    failures: list[str] = []
+    validated: list[str] = []
+
+    if "Backend central em Python/FastAPI" not in readme_text:
+        failures.append("README sem objetivo principal explicito")
+    else:
+        validated.append("objetivo_readme")
+
+    scope_section = _extract_markdown_section(ia_text, "## Escopo do projeto")
+    if not scope_section:
+        failures.append("ia.md sem secao 'Escopo do projeto'")
+        return "FAIL", "; ".join(failures)
+
+    scope_lower = scope_section.lower()
+    route_files = {
+        "whatsapp": ROOT / "app" / "api" / "routes" / "webhooks_meta.py",
+        "instagram": ROOT / "app" / "services" / "instagram_service.py",
+        "tiktok": ROOT / "app" / "services" / "tiktok_service.py",
+        "youtube": ROOT / "app" / "services" / "youtube_service.py",
+        "dashboard": ROOT / "app" / "api" / "routes" / "dashboard.py",
+        "fila assincrona": ROOT / "app" / "workers" / "celery_app.py",
+        "deploy no railway": ROOT / "Procfile",
+        "memoria de conversas": ROOT / "app" / "services" / "memory_service.py",
+    }
+
+    for capability, file_path in route_files.items():
+        if capability in scope_lower:
+            if not file_path.exists():
+                failures.append(f"escopo cita '{capability}', mas arquivo ausente: {file_path.name}")
+            else:
+                validated.append(capability.replace(" ", "_"))
+
+    procfile_path = ROOT / "Procfile"
+    if procfile_path.exists():
+        procfile_text = procfile_path.read_text(encoding="utf-8", errors="replace")
+        if "uvicorn" in procfile_text and "PORT" in procfile_text:
+            validated.append("procfile_port_ok")
+        else:
+            failures.append("Procfile sem start esperado com PORT")
+
+    if failures:
+        return "FAIL", " | ".join(failures)
+
+    return "PASS", "Escopo/objetivo alinhados: " + ", ".join(validated)
+
+
+def _run_railway_cli(command_args: list[str], timeout: int = 60) -> tuple[int, str, str]:
+    candidates = [
+        ["railway", *command_args],
+        ["cmd", "/c", "railway", *command_args],
+    ]
+    last_exc: FileNotFoundError | None = None
+    for candidate in candidates:
+        try:
+            return run_subprocess(candidate, timeout=timeout, clear_proxy=True)
+        except FileNotFoundError as exc:
+            last_exc = exc
+    raise last_exc or FileNotFoundError("Railway CLI nao encontrado no PATH")
+
+
+def check_railway_cli_status() -> tuple[str, str]:
+    try:
+        code, out, err = _run_railway_cli(["status", "--json"], timeout=60)
+    except FileNotFoundError:
+        return "WARN", "Railway CLI nao encontrado no PATH"
+    merged = "\n".join(part for part in (out, err) if part).strip()
+    merged_lower = merged.lower()
+
+    if code != 0:
+        if (
+            "unauthorized" in merged_lower
+            or "invalid_grant" in merged_lower
+            or "please run `railway login` again" in merged_lower
+        ):
+            return "WARN", "Railway CLI sem sessao valida (execute railway login)"
+        if (
+            "failed to fetch" in merged_lower
+            or "error sending request for url" in merged_lower
+            or "connect error" in merged_lower
+            or "connection refused" in merged_lower
+            or "timed out" in merged_lower
+            or "could not resolve host" in merged_lower
+            or "nenhuma conexão pôde ser feita" in merged_lower
+            or "nenhuma conexao pode ser feita" in merged_lower
+        ):
+            return "WARN", f"Railway CLI indisponivel por rede/conectividade: {(merged or 'sem detalhes')[:300]}"
+        if "not recognized" in merged_lower or "command not found" in merged_lower:
+            return "WARN", "Railway CLI nao encontrado no PATH"
+        return "FAIL", f"railway status falhou: {(merged or 'sem detalhes')[:400]}"
+
+    try:
+        payload = json.loads(out) if out else {}
+    except Exception as exc:  # noqa: BLE001
+        return "FAIL", f"railway status retornou JSON invalido: {exc.__class__.__name__}"
+
+    project_name = str(payload.get("name") or payload.get("project") or "desconhecido")
+    environment_name = str(payload.get("environment") or payload.get("environmentName") or "desconhecido")
+
+    try:
+        svc_code, svc_out, svc_err = _run_railway_cli(
+            ["service", "status", "--all", "--json"],
+            timeout=60,
+        )
+    except FileNotFoundError:
+        return "WARN", "railway status ok, mas Railway CLI nao encontrado para service status"
+    if svc_code != 0:
+        svc_details = "\n".join(part for part in (svc_out, svc_err) if part).strip()
+        return (
+            "WARN",
+            "railway status ok, mas service status indisponivel: "
+            f"{(svc_details or 'sem detalhes')[:250]}",
+        )
+
+    service_total = 0
+    service_success = 0
+    try:
+        service_payload = json.loads(svc_out) if svc_out else []
+        if isinstance(service_payload, list):
+            service_total = len(service_payload)
+            for item in service_payload:
+                if not isinstance(item, dict):
+                    continue
+                status_value = str(
+                    item.get("latestDeployment", {}).get("status")
+                    or item.get("deployment", {}).get("status")
+                    or item.get("status")
+                    or ""
+                ).upper()
+                if status_value in {"SUCCESS", "HEALTHY", "RUNNING", "DEPLOYED"}:
+                    service_success += 1
+    except Exception:  # noqa: BLE001
+        return "WARN", f"railway status ok, mas parse de servicos falhou (projeto={project_name})"
+
+    if service_total > 0 and service_success < service_total:
+        return (
+            "WARN",
+            (
+                f"Railway projeto={project_name} env={environment_name}; "
+                f"servicos saudaveis={service_success}/{service_total}"
+            ),
+        )
+
+    return (
+        "PASS",
+        (
+            f"Railway projeto={project_name} env={environment_name}; "
+            f"servicos saudaveis={service_success}/{service_total}"
+        ),
+    )
+
+
 def _database_status_from_mode(mode: str, reason_details: str) -> tuple[str, str]:
     if mode == "primary":
         return "PASS", "Conexao DB ok (SELECT 1; modo=primary)"
@@ -472,7 +890,7 @@ def _check_redis_fallback(process_incoming_message: Any, reason_details: str) ->
         return (
             "FAIL",
             "Fallback de fila ativo, mas task falhou "
-            f"({exc.__class__.__name__}){reason_details}",
+            f"({exc.__class__.__name__}: {exc}){reason_details}",
         )
 
 
@@ -577,6 +995,73 @@ def _temporary_local_smoke_dependencies(
         shutil.rmtree(local_tmp_dir, ignore_errors=True)
 
 
+@contextmanager
+def _temporary_settings_override(**updates: Any) -> Iterator[None]:
+    from app.core.config import settings
+
+    snapshots: dict[str, Any] = {}
+    for key, value in updates.items():
+        snapshots[key] = getattr(settings, key)
+        setattr(settings, key, value)
+    try:
+        yield
+    finally:
+        for key, value in snapshots.items():
+            setattr(settings, key, value)
+
+
+@contextmanager
+def _temporary_logic_harness() -> Iterator[LocalLogicHarness]:
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+
+    from app import models as _models  # noqa: F401
+    from app.api.routes import webhooks_meta
+    from app.core.database import Base, get_db
+    from app.main import app
+
+    original_overrides = dict(app.dependency_overrides)
+    original_delay = webhooks_meta.process_incoming_message.delay
+
+    tmp_root = ROOT / ".qa_tmp"
+    tmp_root.mkdir(parents=True, exist_ok=True)
+    local_tmp_dir = Path(tempfile.mkdtemp(prefix="qa_scope_logic_", dir=str(tmp_root)))
+    local_engine = None
+    queue_calls: list[dict[str, Any]] = []
+
+    try:
+        sqlite_path = local_tmp_dir / "qa_scope_logic.db"
+        sqlite_url = f"sqlite+pysqlite:///{sqlite_path.as_posix()}"
+        local_engine = create_engine(
+            sqlite_url,
+            connect_args={"check_same_thread": False},
+            future=True,
+        )
+        local_session = sessionmaker(bind=local_engine, autoflush=False, autocommit=False)
+        Base.metadata.create_all(bind=local_engine)
+
+        def override_get_db() -> Iterator[Any]:
+            db = local_session()
+            try:
+                yield db
+            finally:
+                db.close()
+
+        def queue_stub(payload: dict[str, Any]) -> dict[str, Any]:
+            queue_calls.append(dict(payload))
+            return {"status": "queued_stub", "payload": payload}
+
+        app.dependency_overrides[get_db] = override_get_db
+        webhooks_meta.process_incoming_message.delay = queue_stub
+        yield LocalLogicHarness(app=app, session_factory=local_session, queue_calls=queue_calls)
+    finally:
+        app.dependency_overrides = original_overrides
+        webhooks_meta.process_incoming_message.delay = original_delay
+        if local_engine is not None:
+            local_engine.dispose()
+        shutil.rmtree(local_tmp_dir, ignore_errors=True)
+
+
 def _run_local_route_checks(client: Any, checks: list[str], failures: list[str]) -> None:
     for path in LOCAL_SMOKE_ROUTES:
         resp = client.get(path)
@@ -625,6 +1110,185 @@ def check_local_smoke() -> tuple[str, str]:
                 _run_local_webhook_checks(client, checks, failures)
 
     details = f"env={settings.app_env}; db=sqlite_temp; " + " | ".join(checks)
+    if failures:
+        return "FAIL", details + " | falhas: " + "; ".join(failures)
+    return "PASS", details
+
+
+def _build_logic_webhook_payload(*, external_message_id: str, phone_number_id: str = "") -> dict[str, Any]:
+    value_payload: dict[str, Any] = {
+        "messaging_product": "whatsapp",
+        "contacts": [
+            {
+                "wa_id": "5511990000000",
+                "profile": {"name": "Scope Logic QA"},
+            }
+        ],
+        "messages": [
+            {
+                "from": "5511990000000",
+                "id": external_message_id,
+                "type": "text",
+                "text": {"body": "quero agendar ensaio de 2 horas"},
+            }
+        ],
+    }
+    if phone_number_id:
+        value_payload["metadata"] = {"phone_number_id": phone_number_id}
+
+    return {
+        "object": "whatsapp_business_account",
+        "entry": [
+            {
+                "id": "WABA_SCOPE_QA",
+                "time": 1710000000,
+                "changes": [
+                    {
+                        "field": "messages",
+                        "value": value_payload,
+                    }
+                ],
+            }
+        ],
+    }
+
+
+def check_scope_logic_flow() -> tuple[str, str]:
+    from fastapi.testclient import TestClient
+
+    from app.core.config import settings
+    from app.models.contact import Contact
+    from app.models.contact_identity import ContactIdentity
+    from app.models.conversation import Conversation
+    from app.models.message import Message
+
+    checks: list[str] = []
+    failures: list[str] = []
+
+    with _muted_loggers(("httpx", "app.main")):
+        with _temporary_logic_harness() as harness:
+            with TestClient(harness.app, raise_server_exceptions=False) as client:
+                seed_id = f"wamid.scope.logic.{int(time.time())}"
+                payload = _build_logic_webhook_payload(
+                    external_message_id=seed_id,
+                    phone_number_id="15551234567",
+                )
+
+                first = client.post("/webhooks/meta", json=payload)
+                checks.append(f"POST webhook first -> {first.status_code}")
+                if first.status_code != 202:
+                    failures.append(f"primeiro webhook status={first.status_code}")
+                first_body = first.json() if first.status_code == 202 else {}
+                if first_body.get("messages_created") != 1:
+                    failures.append("primeiro webhook nao criou exatamente 1 mensagem")
+                if first_body.get("messages_queued") != 1:
+                    failures.append("primeiro webhook nao enfileirou 1 mensagem")
+
+                second = client.post("/webhooks/meta", json=payload)
+                checks.append(f"POST webhook duplicate -> {second.status_code}")
+                if second.status_code != 202:
+                    failures.append(f"webhook duplicado status={second.status_code}")
+                second_body = second.json() if second.status_code == 202 else {}
+                if second_body.get("messages_duplicated", 0) < 1:
+                    failures.append("deduplicacao por external_message_id nao confirmada")
+
+                with harness.session_factory() as db:
+                    contacts_count = db.query(Contact).count()
+                    conversations_count = db.query(Conversation).count()
+                    messages_count = db.query(Message).count()
+                    identities_count = db.query(ContactIdentity).count()
+
+                checks.append(
+                    "persistencia "
+                    f"contacts={contacts_count} conversations={conversations_count} "
+                    f"messages={messages_count} identities={identities_count}"
+                )
+                if contacts_count < 1 or conversations_count < 1 or messages_count < 1:
+                    failures.append("persistencia principal do webhook incompleta")
+                if identities_count < 1:
+                    failures.append("contact_identities nao foi preenchido")
+
+                if len(harness.queue_calls) < 1:
+                    failures.append("fila nao recebeu payload do webhook")
+                else:
+                    first_payload = harness.queue_calls[0]
+                    if not first_payload.get("message_id"):
+                        failures.append("payload de fila sem message_id")
+                    if str(first_payload.get("phone_number_id") or "") != "15551234567":
+                        failures.append("payload de fila sem phone_number_id esperado")
+                    checks.append("queue payload ok")
+
+                pre_disabled_queue_calls = len(harness.queue_calls)
+                with _temporary_settings_override(meta_enabled=False):
+                    disabled = client.post(
+                        "/webhooks/meta",
+                        json=_build_logic_webhook_payload(
+                            external_message_id=seed_id + ".disabled",
+                            phone_number_id="15550000000",
+                        ),
+                    )
+                checks.append(f"POST webhook meta_disabled -> {disabled.status_code}")
+                disabled_body = disabled.json() if disabled.status_code == 202 else {}
+                if disabled.status_code != 202:
+                    failures.append("meta_disabled deveria aceitar webhook com 202")
+                if disabled_body.get("ignored_reason") != "meta_disabled":
+                    failures.append("meta_disabled nao retornou ignored_reason=meta_disabled")
+                if len(harness.queue_calls) != pre_disabled_queue_calls:
+                    failures.append("meta_disabled nao deveria enfileirar payload")
+
+                with _temporary_settings_override(meta_enabled=False):
+                    post_meta = client.post(
+                        "/posts",
+                        json={
+                            "platform": "instagram",
+                            "status": "draft",
+                            "title": "scope-qa-meta",
+                        },
+                    )
+                checks.append(f"POST /posts instagram fallback -> {post_meta.status_code}")
+                if post_meta.status_code != 201:
+                    failures.append("fallback de post Meta nao criou registro")
+                else:
+                    post_meta_body = post_meta.json()
+                    if post_meta_body.get("status") != "pending_meta_review":
+                        failures.append("post Meta sem fallback pending_meta_review")
+
+                with _temporary_settings_override(
+                    tiktok_enabled=False,
+                    tiktok_client_key="",
+                    tiktok_client_secret="",
+                ):
+                    post_tiktok = client.post(
+                        "/posts",
+                        json={
+                            "platform": "tiktok",
+                            "status": "draft",
+                            "title": "scope-qa-tiktok",
+                        },
+                    )
+                checks.append(f"POST /posts tiktok fallback -> {post_tiktok.status_code}")
+                if post_tiktok.status_code != 201:
+                    failures.append("fallback de post TikTok nao criou registro")
+                else:
+                    post_tiktok_body = post_tiktok.json()
+                    if post_tiktok_body.get("status") != "pending_tiktok_setup":
+                        failures.append("post TikTok sem fallback pending_tiktok_setup")
+
+                health = client.get("/health")
+                checks.append(f"GET /health -> {health.status_code}")
+                if health.status_code != 200:
+                    failures.append("/health falhou no teste de logica")
+                else:
+                    integrations = health.json().get("integrations", {})
+                    for key in (
+                        "meta_runtime_enabled",
+                        "tiktok_runtime_enabled",
+                        "whatsapp_dispatch_ready",
+                    ):
+                        if key not in integrations:
+                            failures.append(f"/health sem integrations.{key}")
+
+    details = " | ".join(checks)
     if failures:
         return "FAIL", details + " | falhas: " + "; ".join(failures)
     return "PASS", details
@@ -723,13 +1387,301 @@ def check_remote_smoke(base_url: str) -> tuple[str, str]:
     return "PASS", details
 
 
+def _format_meta_error_from_payload(payload: Any) -> str:
+    if not isinstance(payload, dict):
+        return "sem payload"
+    error_meta = payload.get("error_meta")
+    status_code = payload.get("status_code")
+    if not isinstance(error_meta, dict):
+        return f"status_code={status_code}"
+    code = error_meta.get("code")
+    subcode = error_meta.get("error_subcode")
+    fbtrace = error_meta.get("fbtrace_id")
+    message = error_meta.get("message")
+    return (
+        f"status_code={status_code}; code={code}; subcode={subcode}; "
+        f"fbtrace_id={fbtrace}; message={message}"
+    )
+
+
+def _parse_iso8601(value: Any) -> datetime | None:
+    text = str(value or "").strip()
+    if not text:
+        return None
+    try:
+        if text.endswith("Z"):
+            text = text[:-1] + "+00:00"
+        parsed = datetime.fromisoformat(text)
+        if parsed.tzinfo is None:
+            return parsed.replace(tzinfo=timezone.utc)
+        return parsed.astimezone(timezone.utc)
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def _load_remote_messages(base: str) -> tuple[int | None, list[dict[str, Any]] | None, str | None]:
+    probe = _probe_remote_route(base, "/messages")
+    if probe.unreachable:
+        return probe.status_code, None, probe.error or "unreachable"
+    if probe.status_code != 200:
+        return probe.status_code, None, probe.error or f"HTTP {probe.status_code}"
+    if not isinstance(probe.body, list):
+        return probe.status_code, None, "payload_invalido"
+
+    rows: list[dict[str, Any]] = []
+    for item in probe.body:
+        if isinstance(item, dict):
+            rows.append(item)
+    return probe.status_code, rows, None
+
+
+def _message_dispatch_status(message: dict[str, Any]) -> tuple[str | None, dict[str, Any] | None]:
+    raw_payload = message.get("raw_payload")
+    if not isinstance(raw_payload, dict):
+        return None, None
+
+    dispatch = raw_payload.get("dispatch")
+    if isinstance(dispatch, dict):
+        status = str(dispatch.get("status") or "").strip() or None
+        result = dispatch.get("result")
+        return status, result if isinstance(result, dict) else None
+
+    dispatch_result = raw_payload.get("dispatch_result")
+    if isinstance(dispatch_result, dict):
+        status = str(dispatch_result.get("status") or "").strip() or None
+        return status, dispatch_result
+    return None, None
+
+
+def _is_recent(created_at: datetime | None, since: datetime) -> bool:
+    if created_at is None:
+        return False
+    return created_at >= since
+
+
+def check_whatsapp_dispatch_failures(base_url: str, lookback_minutes: int = 1440) -> tuple[str, str]:
+    base = base_url.rstrip("/")
+    status_code, messages, load_error = _load_remote_messages(base)
+    if messages is None:
+        return "WARN", f"GET /messages -> {status_code}; falha ao carregar mensagens ({load_error})"
+
+    now_utc = datetime.now(timezone.utc)
+    since = now_utc - timedelta(minutes=max(lookback_minutes, 1))
+
+    attempts = 0
+    failures: list[dict[str, Any]] = []
+    for message in messages:
+        if str(message.get("platform") or "").lower() != "whatsapp":
+            continue
+        if str(message.get("direction") or "").lower() != "outbound":
+            continue
+        created_at = _parse_iso8601(message.get("created_at"))
+        if not _is_recent(created_at, since):
+            continue
+
+        dispatch_status, dispatch_result = _message_dispatch_status(message)
+        if not dispatch_status:
+            continue
+        attempts += 1
+        if dispatch_status == "sent":
+            continue
+
+        detail_parts = [
+            f"id={message.get('id')}",
+            f"created_at={message.get('created_at')}",
+            f"dispatch_status={dispatch_status}",
+        ]
+        if isinstance(dispatch_result, dict):
+            status_code_val = dispatch_result.get("status_code")
+            error_meta = dispatch_result.get("error_meta")
+            detail_parts.append(f"status_code={status_code_val}")
+            if isinstance(error_meta, dict):
+                detail_parts.append(f"code={error_meta.get('code')}")
+                detail_parts.append(f"subcode={error_meta.get('error_subcode')}")
+                detail_parts.append(f"fbtrace_id={error_meta.get('fbtrace_id')}")
+                detail_parts.append(f"message={error_meta.get('message')}")
+            elif dispatch_result.get("detail"):
+                detail_parts.append(f"detail={dispatch_result.get('detail')}")
+        failures.append(
+            {
+                "created_at": created_at,
+                "details": "; ".join(str(part) for part in detail_parts if str(part).strip()),
+            }
+        )
+
+    base_detail = f"GET /messages -> {status_code}; janela={lookback_minutes}min; tentativas={attempts}"
+    if failures:
+        failures.sort(
+            key=lambda item: item.get("created_at") or datetime.fromtimestamp(0, tz=timezone.utc),
+            reverse=True,
+        )
+        primary = str(failures[0].get("details") or "")
+        extras = " || ".join(
+            str(item.get("details") or "")
+            for item in failures[1:4]
+            if str(item.get("details") or "").strip()
+        )
+        if extras:
+            primary = primary + f" | outros_erros_recentes={len(failures)-1} | " + extras
+        return (
+            "FAIL",
+            base_detail + "; falhas_recentes=" + str(len(failures)) + " | " + primary,
+        )
+    if attempts == 0:
+        return "WARN", base_detail + "; sem envio WhatsApp recente para validar dispatch real"
+    return "PASS", base_detail + "; nenhum erro de dispatch WhatsApp detectado"
+
+
+def check_instagram_inbound_delivery(base_url: str, lookback_minutes: int = 360) -> tuple[str, str]:
+    base = base_url.rstrip("/")
+    health_probe = _probe_remote_route(base, "/health")
+    status_code, messages, load_error = _load_remote_messages(base)
+
+    if messages is None:
+        return "WARN", f"GET /messages -> {status_code}; falha ao carregar mensagens ({load_error})"
+
+    health_payload = health_probe.body if isinstance(health_probe.body, dict) else {}
+    integrations = health_payload.get("integrations") if isinstance(health_payload, dict) else {}
+    if not isinstance(integrations, dict):
+        integrations = {}
+    instagram_ready = bool(
+        integrations.get("instagram_publish_ready")
+        or integrations.get("instagram_cached_account_ready")
+    )
+
+    now_utc = datetime.now(timezone.utc)
+    since = now_utc - timedelta(minutes=max(lookback_minutes, 1))
+    inbound_count = 0
+    last_inbound_at: str | None = None
+    for message in messages:
+        if str(message.get("platform") or "").lower() != "instagram":
+            continue
+        if str(message.get("direction") or "").lower() != "inbound":
+            continue
+        created_at_text = str(message.get("created_at") or "")
+        created_at = _parse_iso8601(created_at_text)
+        if not _is_recent(created_at, since):
+            continue
+        inbound_count += 1
+        if last_inbound_at is None or created_at_text > last_inbound_at:
+            last_inbound_at = created_at_text
+
+    base_detail = (
+        f"GET /messages -> {status_code}; GET /health -> {health_probe.status_code}; "
+        f"instagram_ready={instagram_ready}; janela={lookback_minutes}min; inbound_count={inbound_count}; "
+        f"last_inbound_at={last_inbound_at}"
+    )
+    if not instagram_ready:
+        return "WARN", base_detail + "; Instagram ainda nao pronto no /health"
+    if inbound_count == 0:
+        return (
+            "FAIL",
+            base_detail + "; sem DM Instagram recebida no periodo validado",
+        )
+    return "PASS", base_detail + "; DM Instagram chegando no dashboard"
+
+
+def check_meta_live_signals(base_url: str) -> tuple[str, str]:
+    base = base_url.rstrip("/")
+    outbound_probe = _probe_remote_route(base, "/health/meta-live/outbound")
+    inbound_probe = _probe_remote_route(base, "/health/meta-live/inbound")
+    combined_probe = _probe_remote_route(base, "/health/meta-live")
+
+    checks = [
+        _probe_to_summary(outbound_probe),
+        _probe_to_summary(inbound_probe),
+        _probe_to_summary(combined_probe),
+    ]
+
+    if outbound_probe.unreachable and inbound_probe.unreachable and combined_probe.unreachable:
+        return "WARN", " | ".join(checks) + " | endpoint meta-live indisponivel"
+
+    failures: list[str] = []
+    warnings: list[str] = []
+
+    if outbound_probe.status_code != 200:
+        failures.append(f"outbound_http={outbound_probe.status_code}")
+    if inbound_probe.status_code != 200:
+        failures.append(f"inbound_http={inbound_probe.status_code}")
+    if combined_probe.status_code != 200:
+        failures.append(f"combined_http={combined_probe.status_code}")
+
+    outbound_payload = outbound_probe.body if isinstance(outbound_probe.body, dict) else {}
+    inbound_payload = inbound_probe.body if isinstance(inbound_probe.body, dict) else {}
+    combined_payload = combined_probe.body if isinstance(combined_probe.body, dict) else {}
+
+    outbound_status = str(outbound_payload.get("status") or "")
+    inbound_status = str(inbound_payload.get("status") or "")
+    combined_status = str(combined_payload.get("status") or "")
+
+    if outbound_status not in {"ok", "degraded"}:
+        details = outbound_payload.get("details") if isinstance(outbound_payload, dict) else {}
+        meta_response = details.get("meta_response") if isinstance(details, dict) else {}
+        failures.append(
+            "outbound_status="
+            f"{outbound_status}; where={outbound_payload.get('where')}; "
+            f"meta_error={_format_meta_error_from_payload(meta_response)}"
+        )
+    elif outbound_status == "degraded":
+        details = outbound_payload.get("details") if isinstance(outbound_payload, dict) else {}
+        phone_probe = details.get("probe", {}).get("phone") if isinstance(details, dict) else {}
+        failures.append(
+            "outbound_status=degraded; where=Meta Graph phone check; "
+            f"meta_error={_format_meta_error_from_payload(phone_probe)}"
+        )
+
+    if inbound_status in {"fail", "degraded"}:
+        details = inbound_payload.get("details") if isinstance(inbound_payload, dict) else {}
+        failures.append(
+            "inbound_status="
+            f"{inbound_status}; where={inbound_payload.get('where')}; "
+            f"recent_received={details.get('recent_received_count')}; "
+            f"recent_invalid_signature={details.get('recent_invalid_signature_count')}; "
+            f"last_invalid_signature_at={details.get('last_invalid_signature_at')}"
+        )
+    elif inbound_status == "warn":
+        details = inbound_payload.get("details") if isinstance(inbound_payload, dict) else {}
+        warnings.append(
+            "inbound_status=warn; "
+            f"sem prova recente de entrada; last_received_at={details.get('last_received_at')}"
+        )
+
+    if combined_status == "fail":
+        failures.append(
+            "combined_status="
+            f"{combined_status}; message={combined_payload.get('message')}"
+        )
+    elif combined_status == "degraded" and not failures:
+        warnings.append(
+            "combined_status=degraded; "
+            f"message={combined_payload.get('message')}"
+        )
+
+    summary = " | ".join(checks)
+    if failures:
+        detail = summary + " | falhas: " + " || ".join(failures)
+        if warnings:
+            detail += " | alertas: " + " || ".join(warnings)
+        return "FAIL", detail
+    if warnings:
+        return "WARN", summary + " | alertas: " + " || ".join(warnings)
+    return "PASS", summary + " | sinais de ida e volta Meta validados"
+
+
 def save_report(
     results: list[CheckResult],
     dashboard_url: str | None,
 ) -> None:
+    errors = _derive_error_entries_from_results(results)
+    totals = {"PASS": 0, "WARN": 0, "FAIL": 0}
+    for result in results:
+        totals[result.status] = totals.get(result.status, 0) + 1
     payload = {
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "dashboard_url": dashboard_url,
+        "totals": totals,
+        "plain_summary": _build_plain_summary(totals, errors),
+        "errors": errors,
         "results": [asdict(result) for result in results],
         "roadmap": ROADMAP_ITEMS,
     }
@@ -752,6 +1704,17 @@ def print_report(results: list[CheckResult], dashboard_url: str | None) -> int:
         f"WARN={totals.get('WARN', 0)} "
         f"FAIL={totals.get('FAIL', 0)}"
     )
+    errors = _derive_error_entries_from_results(results)
+    print(f"Resumo simples: {_build_plain_summary(totals, errors)}")
+    if errors:
+        print("\nTela de erros:")
+        for item in errors:
+            print(
+                f"- [{item['status']}] onde={item['where']} | codigo={item['error_code']}\n"
+                f"  explicacao={item['simple_explanation']}\n"
+                f"  motivo={item['most_likely_cause']}\n"
+                f"  detalhe={item['technical_error']}"
+            )
     print(f"Relatorio salvo em: {REPORT_PATH}")
     if dashboard_url:
         print(f"Dashboard web: {dashboard_url}")
@@ -774,6 +1737,21 @@ def parse_args() -> argparse.Namespace:
         "--skip-local-smoke",
         action="store_true",
         help="Pula smoke local via TestClient.",
+    )
+    parser.add_argument(
+        "--skip-scope-docs",
+        action="store_true",
+        help="Pula validacao de escopo/objetivo por README.md e ia.md.",
+    )
+    parser.add_argument(
+        "--skip-scope-logic",
+        action="store_true",
+        help="Pula validacao de logica principal baseada no escopo.",
+    )
+    parser.add_argument(
+        "--skip-railway-cli",
+        action="store_true",
+        help="Pula check do Railway via CLI (railway status --json).",
     )
     parser.add_argument(
         "--no-dashboard",
@@ -806,13 +1784,67 @@ def build_checks(args: argparse.Namespace) -> list[CheckSpec]:
         CheckSpec("Main/API", "Sintaxe (compileall)", check_compileall),
         CheckSpec("Main/API", "Imports principais", check_imports),
         CheckSpec("Main/API", "Rotas registradas", check_registered_routes),
+    ]
+
+    if not args.skip_scope_docs:
+        checks.append(
+            CheckSpec(
+                "Escopo/Objetivo",
+                "Aderencia README+IA",
+                check_scope_objective_alignment,
+            )
+        )
+
+    checks.extend(
+        [
         CheckSpec("Infra Local", "Conexao DB", check_database),
         CheckSpec("Infra Local", "Conexao Redis", check_redis),
-    ]
+        ]
+    )
+
+    if not args.skip_scope_logic:
+        checks.append(
+            CheckSpec(
+                "Logica",
+                "Fluxo principal do escopo",
+                check_scope_logic_flow,
+            )
+        )
 
     if not args.skip_local_smoke:
         checks.append(CheckSpec("Smoke Local", "Smoke local FastAPI", check_local_smoke))
+
+    if not args.skip_railway_cli:
+        checks.append(
+            CheckSpec(
+                "Railway CLI",
+                "Status do Railway via CLI",
+                check_railway_cli_status,
+            )
+        )
+
     if not args.skip_remote:
+        checks.append(
+            CheckSpec(
+                "Meta Live",
+                "Sinal ida/volta Meta",
+                lambda: check_meta_live_signals(args.base_url),
+            )
+        )
+        checks.append(
+            CheckSpec(
+                "Meta Live",
+                "WhatsApp dispatch (falhas reais)",
+                lambda: check_whatsapp_dispatch_failures(args.base_url),
+            )
+        )
+        checks.append(
+            CheckSpec(
+                "Meta Live",
+                "Instagram DM entrada",
+                lambda: check_instagram_inbound_delivery(args.base_url),
+            )
+        )
         checks.append(
             CheckSpec(
                 "Smoke Remoto",
@@ -856,6 +1888,18 @@ def build_dashboard_html() -> str:
       </div>
       <div id="message" style="margin-top:8px;font-weight:600">Carregando...</div>
       <div id="totals" class="badges"></div>
+    </div>
+    <div class="card">
+      <h2>Resumo Simples</h2>
+      <div id="plain-summary" class="details">Carregando explicacao simplificada...</div>
+    </div>
+    <div class="card">
+      <h2>Tela de Erros</h2>
+      <div id="error_totals" class="badges"></div>
+      <table>
+        <thead><tr><th>Onde</th><th>Codigo</th><th>Explicacao simples</th><th>Motivo mais provavel</th><th>Detalhe tecnico</th></tr></thead>
+        <tbody id="errors"></tbody>
+      </table>
     </div>
     <div id="checks" class="grid"></div>
     <div class="card">
@@ -927,6 +1971,26 @@ def build_dashboard_html() -> str:
         body.appendChild(tr);
       });
     }
+    function renderErrors(items){
+      const body=document.getElementById('errors');
+      body.innerHTML='';
+      if(!items || items.length===0){
+        const tr=document.createElement('tr');
+        tr.innerHTML='<td colspan=\"5\">Sem erros detectados ate agora.</td>';
+        body.appendChild(tr);
+        return;
+      }
+      items.forEach(i=>{
+        const tr=document.createElement('tr');
+        tr.innerHTML='<td></td><td></td><td><div class=\"details\"></div></td><td><div class=\"details\"></div></td><td><div class=\"details\"></div></td>';
+        tr.children[0].textContent=i.where||'-';
+        tr.children[1].textContent=i.error_code||'N/A';
+        tr.children[2].querySelector('.details').textContent=i.simple_explanation||'-';
+        tr.children[3].querySelector('.details').textContent=i.most_likely_cause||'-';
+        tr.children[4].querySelector('.details').textContent=i.technical_error||'-';
+        body.appendChild(tr);
+      });
+    }
     async function refresh(){
       try{
         const res=await fetch('/state',{cache:'no-store'});
@@ -937,8 +2001,11 @@ def build_dashboard_html() -> str:
         document.getElementById('updated').textContent='Atualizado: '+(data.updated_at||'-');
         document.getElementById('finished').textContent='Fim: '+(data.finished_at||'em andamento');
         document.getElementById('message').textContent=data.message||'-';
+        document.getElementById('plain-summary').textContent=data.plain_summary||'-';
         renderTotals('totals', data.totals||{});
+        renderTotals('error_totals', data.error_totals||{});
         renderTotals('roadmap_totals', data.roadmap_totals||{});
+        renderErrors(data.errors||[]);
         renderChecks(data.checks||[]);
         renderRoadmap(data.roadmap||[]);
       }catch(err){

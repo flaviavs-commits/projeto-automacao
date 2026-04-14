@@ -1048,3 +1048,52 @@ Validacao executada:
     - `llm_status=completed`
     - `llm_model=qwen2.5:0.5b-instruct`
     - `external_message_id`, `inbound_message_id` e `outbound_message_id` gerados.
+
+## Registro de task - 2026-04-14 (Meta live + QA estrito + relatorio do dia)
+
+Task executada: endurecer diagnostico de integracao Meta e eliminar "falso verde" do QA, com reporte diario consolidado.
+
+Entregas de backend:
+- Novo servico `app/services/meta_live_service.py` com probes de:
+  - saida Meta (`/me` e validacao de phone metadata quando disponivel);
+  - entrada Meta por auditoria recente em `audit_logs`.
+- Novos endpoints:
+  - `GET /health/meta-live/outbound`
+  - `GET /health/meta-live/inbound`
+  - `GET /health/meta-live`
+- `/health` enriquecido com:
+  - `meta_access_token_source`
+  - `resolved_whatsapp_phone_number_id`
+  - `meta_cached_refresh_attempt`
+- `webhooks_meta` passou a gravar `meta_webhook_invalid_signature` em `audit_logs`.
+- `BaseExternalService` passou a retornar `error_meta` (`code`, `subcode`, `fbtrace_id`, `message`) em erro externo.
+- `PlatformAccountService` ganhou refresh de token long-lived em janela de renovacao e resolvedor unico `resolve_meta_credentials`.
+- `WhatsAppService` e `InstagramPublishService` migrados para o resolvedor unico.
+
+Entregas de QA:
+- `qa_tudo.py` com:
+  - "Resumo Simples";
+  - "Tela de Erros";
+  - parse de codigo HTTP/META e local da falha;
+  - explicacao simples + causa provavel.
+- Novos checks remotos:
+  - `Meta Live / Sinal ida/volta Meta`
+  - `Meta Live / WhatsApp dispatch (falhas reais)`
+  - `Meta Live / Instagram DM entrada`
+- Resultado: erro real agora sobe para `FAIL` automaticamente.
+
+Validacao objetiva:
+- execucao mais recente:
+  - `cmd /c .\\.venv\\Scripts\\python.exe qa_tudo.py --no-dashboard --no-pause`
+  - resultado: `PASS=11`, `WARN=2`, `FAIL=2`
+- falhas reais detectadas:
+  - WhatsApp outbound: `code=131030` (numero fora da allow list de teste) + evidencia historica `190/463` (token expirado).
+  - Instagram inbound: `inbound_count=0` no periodo validado.
+
+Relatorio diario gerado:
+- `relatorio_gabrielf_14_04.md` (consolidacao completa do dia com cronologia, evidencias, riscos e proximos passos).
+
+Revisao do relatorio (mesmo dia):
+- `relatorio_gabrielf_14_04.md` reescrito para deixar explicito:
+  - LLM ja esta em producao e pronto para operar como agente inteligente;
+  - principal impeditivo atual segue sendo a conexao Meta (WhatsApp/Instagram ainda nao 100% conectados).

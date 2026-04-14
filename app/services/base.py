@@ -44,7 +44,14 @@ class BaseExternalService:
             detail=detail,
         )
 
-    def request_failed(self, action: str, detail: str, status_code: int | None = None) -> ExternalServiceResult:
+    def request_failed(
+        self,
+        action: str,
+        detail: str,
+        status_code: int | None = None,
+        *,
+        error_meta: dict[str, Any] | None = None,
+    ) -> ExternalServiceResult:
         payload: dict[str, Any] = {
             "status": "request_failed",
             "service": self.service_name,
@@ -53,7 +60,23 @@ class BaseExternalService:
         }
         if status_code is not None:
             payload["status_code"] = status_code
+        if error_meta:
+            payload["error_meta"] = error_meta
         return ExternalServiceResult(**payload)
+
+    def _extract_error_meta(self, body: Any) -> dict[str, Any]:
+        if not isinstance(body, dict):
+            return {}
+        error = body.get("error")
+        if not isinstance(error, dict):
+            return {}
+        return {
+            "type": error.get("type"),
+            "code": error.get("code"),
+            "error_subcode": error.get("error_subcode") or error.get("subcode"),
+            "message": error.get("message"),
+            "fbtrace_id": error.get("fbtrace_id"),
+        }
 
     def _decode_response_body(self, response: httpx.Response) -> Any:
         try:
@@ -101,8 +124,10 @@ class BaseExternalService:
             )
 
         body_text = body if isinstance(body, str) else json.dumps(body, ensure_ascii=True)
+        error_meta = self._extract_error_meta(body)
         return self.request_failed(
             action=method.lower(),
             detail=body_text[:1000],
             status_code=response.status_code,
+            error_meta=error_meta or None,
         )

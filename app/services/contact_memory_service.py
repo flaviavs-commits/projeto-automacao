@@ -65,6 +65,14 @@ class ContactMemoryService:
     _PRICE_RE = re.compile(r"(r\$\s?\d+[\d\.,]*)", flags=re.IGNORECASE)
     _DURATION_RE = re.compile(r"\b([1-9])\s*(h|hora|horas)\b")
     _PEOPLE_RE = re.compile(r"\b(\d{1,2})\s*(pessoa|pessoas)\b")
+    _NAME_RE = re.compile(
+        r"\bmeu\s+nome\s*(?:e|é)\s+([A-Za-zÀ-ÿ][A-Za-zÀ-ÿ'\- ]{1,60})\b",
+        flags=re.IGNORECASE,
+    )
+    _I_AM_RE = re.compile(
+        r"\b(?:eu\s+sou|sou)\s+([A-Za-zÀ-ÿ][A-Za-zÀ-ÿ'\- ]{1,60})\b",
+        flags=re.IGNORECASE,
+    )
 
     def save_from_inbound_text(
         self,
@@ -137,6 +145,10 @@ class ContactMemoryService:
 
     def _extract_candidates(self, original_text: str, normalized_text: str) -> list[dict]:
         candidates: list[dict] = []
+
+        name_candidate = self._extract_name(original_text, normalized_text)
+        if name_candidate:
+            candidates.append(name_candidate)
 
         if any(marker in normalized_text for marker in self._OLD_CUSTOMER_MARKERS):
             candidates.append(
@@ -305,3 +317,44 @@ class ContactMemoryService:
         for item in candidates:
             deduped[item["memory_key"]] = item
         return list(deduped.values())
+
+    def _extract_name(self, original_text: str, normalized_text: str) -> dict | None:
+        raw = ""
+        match = self._NAME_RE.search(original_text or "")
+        if match:
+            raw = str(match.group(1) or "").strip()
+        else:
+            match = self._I_AM_RE.search(original_text or "")
+            if match:
+                raw = str(match.group(1) or "").strip()
+
+        if not raw:
+            return None
+
+        cleaned = re.sub(r"[^A-Za-zÀ-ÿ'\- ]+", " ", raw)
+        cleaned = " ".join(cleaned.split()).strip()
+        if not cleaned:
+            return None
+
+        parts = cleaned.split(" ")
+        cleaned = " ".join(parts[:3]).strip()
+        if not cleaned:
+            return None
+
+        normalized = self._normalize(cleaned)
+        if normalized in {"cliente", "cliente antigo", "cliente novo"}:
+            return None
+        if any(marker in normalized_text for marker in {"sou cliente", "cliente antigo", "cliente novo"}):
+            if normalized in {"cliente", "cliente antigo", "cliente novo"}:
+                return None
+
+        display = " ".join(word[:1].upper() + word[1:] for word in cleaned.split(" ") if word)
+        if not display:
+            return None
+
+        return {
+            "memory_key": "nome_cliente",
+            "memory_value": display,
+            "importance": 5,
+            "confidence": 0.9,
+        }

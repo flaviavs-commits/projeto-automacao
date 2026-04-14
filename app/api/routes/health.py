@@ -1,10 +1,11 @@
 from sqlalchemy import text
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Query
 import redis
 
 from app.core.config import settings
 from app.core.database import SessionLocal, get_database_runtime_state
+from app.services.meta_live_service import MetaLiveService
 from app.services.platform_account_service import PlatformAccountService
 from app.workers.celery_app import get_queue_runtime_state
 
@@ -22,8 +23,10 @@ def health_check() -> dict:
     cached_meta_token_ready = bool(cached_meta_snapshot.get("token_usable"))
     cached_meta_token_present = bool(cached_meta_snapshot.get("token_present"))
     cached_meta_token_expired = bool(cached_meta_snapshot.get("token_expired"))
+    cached_meta_refresh_attempt = cached_meta_snapshot.get("refresh_attempt")
     cached_instagram_account_ready = bool(cached_meta_snapshot.get("instagram_account_ready"))
     cached_whatsapp_phone_number_ready = bool(cached_meta_snapshot.get("whatsapp_phone_number_ready"))
+    resolved_meta_credentials = PlatformAccountService().resolve_meta_credentials()
     effective_meta_runtime_enabled = settings.meta_enabled and (
         settings.meta_ready or cached_meta_token_ready
     )
@@ -65,12 +68,15 @@ def health_check() -> dict:
             "meta_cached_token_present": cached_meta_token_present,
             "meta_cached_token_expired": cached_meta_token_expired,
             "meta_cached_token_expires_at": cached_meta_snapshot.get("token_expires_at"),
+            "meta_cached_refresh_attempt": cached_meta_refresh_attempt,
             "meta_runtime_enabled": effective_meta_runtime_enabled,
             "meta_oauth_ready": settings.meta_oauth_ready,
+            "meta_access_token_source": resolved_meta_credentials.get("access_token_source"),
             "instagram_publish_ready": effective_instagram_publish_ready,
             "instagram_cached_account_ready": cached_instagram_account_ready,
             "whatsapp_phone_number_id_configured": bool(settings.meta_whatsapp_phone_number_id.strip()),
             "whatsapp_cached_phone_number_ready": cached_whatsapp_phone_number_ready,
+            "resolved_whatsapp_phone_number_id": resolved_meta_credentials.get("phone_number_id"),
             "whatsapp_dispatch_ready": (
                 effective_meta_runtime_enabled
                 and (
@@ -89,3 +95,35 @@ def health_check() -> dict:
         "redis_mode": queue_runtime.get("mode"),
         "redis_fallback_reason": queue_runtime.get("fallback_reason"),
     }
+
+
+@router.get("/health/meta-live/outbound")
+def health_meta_live_outbound() -> dict:
+    result = MetaLiveService().probe_outbound()
+    return {
+        "status": result.get("status"),
+        "message": result.get("message"),
+        "where": result.get("where"),
+        "details": result,
+    }
+
+
+@router.get("/health/meta-live/inbound")
+def health_meta_live_inbound(
+    recent_window_minutes: int = Query(default=60, ge=1, le=1440),
+) -> dict:
+    result = MetaLiveService().probe_inbound(recent_window_minutes=recent_window_minutes)
+    return {
+        "status": result.get("status"),
+        "message": result.get("message"),
+        "where": result.get("where"),
+        "details": result,
+    }
+
+
+@router.get("/health/meta-live")
+def health_meta_live(
+    recent_window_minutes: int = Query(default=60, ge=1, le=1440),
+) -> dict:
+    result = MetaLiveService().probe_live(recent_window_minutes=recent_window_minutes)
+    return result

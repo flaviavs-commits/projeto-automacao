@@ -234,6 +234,22 @@ async def receive_meta_webhook(
             app_secret=effective_meta_secret,
         )
         if not signature_ok:
+            try:
+                db.add(
+                    AuditLog(
+                        entity_type="webhook",
+                        event_type="meta_webhook_invalid_signature",
+                        details={
+                            "path": str(request.url.path),
+                            "environment": settings.app_env,
+                            "signature_present": bool(signature_header),
+                            "signature_header_prefix": str(signature_header or "")[:24],
+                        },
+                    )
+                )
+                db.commit()
+            except Exception:
+                db.rollback()
             logger.warning(
                 "meta_webhook_invalid_signature",
                 extra={

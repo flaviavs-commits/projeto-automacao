@@ -18,16 +18,15 @@ class InstagramPublishService(BaseExternalService):
         if not settings.meta_enabled:
             return self.integration_disabled("publish_post", "meta_disabled")
 
-        persisted_credentials = PlatformAccountService().get_latest_meta_credentials()
+        resolved_credentials = PlatformAccountService().resolve_meta_credentials()
         ig_user_id = str(
             payload.get("ig_user_id")
             or settings.instagram_business_account_id
-            or persisted_credentials.get("instagram_business_account_id")
+            or resolved_credentials.get("instagram_business_account_id")
         ).strip()
         access_token = str(
             payload.get("access_token")
-            or settings.meta_access_token
-            or persisted_credentials.get("access_token")
+            or resolved_credentials.get("access_token")
         ).strip()
         image_url = str(payload.get("image_url") or payload.get("media_url") or "").strip()
         caption = str(payload.get("caption") or "").strip()

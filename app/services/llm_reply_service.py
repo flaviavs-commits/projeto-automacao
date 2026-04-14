@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 import sys
 import unicodedata
 from pathlib import Path
@@ -92,12 +93,27 @@ class LLMReplyService(BaseExternalService):
 
         context_messages = context_messages or []
         key_memories = key_memories or []
-        mandatory_link = self._select_mandatory_link(cleaned_user_text, context_messages, key_memories)
+        cta_link = self._select_cta_link(cleaned_user_text, context_messages, key_memories)
 
         model_name = str(model_override or settings.llm_model).strip()
         if not model_name:
             return self.invalid_payload(action, "model is required")
         quality_fallback_model = self._resolve_quality_fallback_model(model_name)
+
+        identity_reply = self._build_identity_reply(cleaned_user_text, key_memories)
+        if identity_reply:
+            return ExternalServiceResult(
+                status="completed",
+                service=self.service_name,
+                action=action,
+                model="rule_memory",
+                requested_model=model_name,
+                attempted_models=["rule_memory"],
+                quality_issue=None,
+                quality_retry_status="not_needed",
+                routing_link=None,
+                reply_text=identity_reply,
+            )
 
         options: dict[str, Any] = {
             "temperature": settings.llm_temperature,
@@ -164,7 +180,8 @@ class LLMReplyService(BaseExternalService):
             elif fallback_result is not None:
                 quality_retry_status = "fallback_failed"
 
-        reply_text = self._ensure_final_cta(selected_reply, mandatory_link)
+        sanitized_reply = self._sanitize_identity_hallucination(selected_reply)
+        reply_text = self._ensure_final_cta(sanitized_reply, cta_link)
 
         return ExternalServiceResult(
             status="completed",
@@ -175,7 +192,7 @@ class LLMReplyService(BaseExternalService):
             attempted_models=attempted_models,
             quality_issue=quality_issue,
             quality_retry_status=quality_retry_status,
-            routing_link=mandatory_link,
+            routing_link=cta_link,
             reply_text=reply_text,
         )
 
@@ -203,7 +220,9 @@ class LLMReplyService(BaseExternalService):
             "ou duvida fora da base, ofereca atendimento humano. "
             "Nunca confirme horario manualmente; use somente o link oficial. "
             "Se perguntarem seu nome, responda exatamente: 'Eu sou o Agente FC VIP'. "
-            "Toda resposta final deve ter CTA claro e link oficial adequado."
+            "Nunca diga que e Watson, Claude, Anthropic, OpenAI ou qualquer outro nome externo. "
+            "So inclua link oficial quando o cliente pedir agendamento, horario, disponibilidade, valores "
+            "ou quiser conhecer o estudio."
         )
         if settings.llm_domain_lock:
             if domain_description:
@@ -325,17 +344,21 @@ class LLMReplyService(BaseExternalService):
         return " ".join(str(value or "").lower().strip().split())
 
     def _memory_lookup(self, key_memories: list[dict[str, Any]], key: str) -> str:
+        value = self._memory_lookup_raw(key_memories, key)
+        return value.lower() if value else ""
+
+    def _memory_lookup_raw(self, key_memories: list[dict[str, Any]], key: str) -> str:
         for item in key_memories:
             if str(item.get("key") or "").strip() == key:
-                return str(item.get("value") or "").strip().lower()
+                return str(item.get("value") or "").strip()
         return ""
 
-    def _select_mandatory_link(
+    def _select_cta_link(
         self,
         user_text: str,
         context_messages: list[dict[str, Any]],
         key_memories: list[dict[str, Any]],
-    ) -> str:
+    ) -> str | None:
         haystack = self._normalize(
             " ".join(
                 [
@@ -370,23 +393,38 @@ class LLMReplyService(BaseExternalService):
         if intent == "conhecer":
             return self._LINK_NEW_DISCOVER
 
-        if customer_status == "antigo":
-            return self._LINK_OLD_SCHEDULE
-        return self._LINK_NEW_DISCOVER
+        return None
 
-    def _ensure_final_cta(self, reply_text: str, mandatory_link: str) -> str:
+    def _ensure_final_cta(self, reply_text: str, cta_link: str | None) -> str:
         compact = " ".join(str(reply_text or "").split()).strip()
         if not compact:
             compact = "Posso te ajudar com o atendimento do estudio FC VIP."
+
+        if not cta_link:
+            for known_link in {
+                self._LINK_NEW_DISCOVER,
+                self._LINK_NEW_SCHEDULE,
+                self._LINK_OLD_SCHEDULE,
+            }:
+                compact = compact.replace(known_link, " ")
+            compact = compact.replace("Para garantir seu horario, acesse agora:", " ")
+            compact = compact.replace(
+                "Para conhecer melhor o estudio e seguir com o atendimento, acesse:",
+                " ",
+            )
+            compact = re.sub(r"\s+", " ", compact).strip(" \n\t.,;:-")
+            if not compact:
+                compact = "Posso te ajudar com o atendimento do estudio FC VIP."
+            return compact
 
         for known_link in {
             self._LINK_NEW_DISCOVER,
             self._LINK_NEW_SCHEDULE,
             self._LINK_OLD_SCHEDULE,
         }:
-            compact = compact.replace(known_link, mandatory_link)
+            compact = compact.replace(known_link, cta_link)
 
-        current_link = mandatory_link
+        current_link = cta_link
 
         if current_link == self._LINK_OLD_SCHEDULE:
             cta = f"Para garantir seu horario, acesse agora: {self._LINK_OLD_SCHEDULE}"
@@ -398,6 +436,49 @@ class LLMReplyService(BaseExternalService):
         if compact.endswith(cta):
             return compact
         return f"{compact}\n\n{cta}"
+
+    def _build_identity_reply(self, user_text: str, key_memories: list[dict[str, Any]]) -> str | None:
+        normalized = self._normalize_for_quality(user_text)
+        if self._is_self_identity_question(normalized):
+            return "Eu sou o Agente FC VIP. Posso te ajudar com atendimento, horarios e agendamento."
+
+        if self._is_user_identity_question(normalized):
+            customer_name = self._memory_lookup_raw(key_memories, "nome_cliente")
+            if customer_name:
+                return (
+                    f"Voce e {customer_name}. "
+                    "Se quiser, ja continuo o atendimento e vejo a melhor opcao para seu agendamento."
+                )
+            return (
+                "Ainda nao tenho seu nome salvo com seguranca. "
+                "Se quiser, me diga no formato 'meu nome e ...' que eu guardo para o atendimento."
+            )
+        return None
+
+    def _is_self_identity_question(self, normalized_user_text: str) -> bool:
+        markers = {
+            "quem e voce",
+            "qual seu nome",
+            "seu nome",
+            "voce e quem",
+        }
+        return any(marker in normalized_user_text for marker in markers)
+
+    def _is_user_identity_question(self, normalized_user_text: str) -> bool:
+        markers = {
+            "quem sou eu",
+            "qual meu nome",
+            "sabe meu nome",
+            "lembra meu nome",
+        }
+        return any(marker in normalized_user_text for marker in markers)
+
+    def _sanitize_identity_hallucination(self, reply_text: str) -> str:
+        normalized = self._normalize_for_quality(reply_text)
+        banned_tokens = {"watson", "claude", "anthropic", "openai"}
+        if any(token in normalized for token in banned_tokens):
+            return "Eu sou o Agente FC VIP. Posso te ajudar com atendimento, horarios e agendamento."
+        return reply_text
 
     def _extract_reply_text(self, body: Any) -> str:
         if isinstance(body, dict):

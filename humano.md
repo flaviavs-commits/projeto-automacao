@@ -740,3 +740,37 @@ Teste real feito:
   - `llm_status=completed`
   - `llm_model=qwen2.5:0.5b-instruct`
   - resposta outbound criada com ids de rastreio no JSON.
+
+## Registro de task - 2026-04-14 (QA com erro real de WhatsApp/Instagram + relatorio diario)
+
+Task executada: fazer o QA parar de esconder erro funcional e mostrar o problema real de Meta de forma simples.
+
+O que foi entregue:
+- novos endpoints de saude Meta live:
+  - `/health/meta-live/outbound`
+  - `/health/meta-live/inbound`
+  - `/health/meta-live`
+- registro de assinatura invalida no webhook (`meta_webhook_invalid_signature`) em `audit_logs`;
+- diagnostico de erro externo com `error_meta` (codigo/subcodigo/fbtrace/message);
+- QA com "Tela de Erros" e explicacao simples para semi leigo;
+- checks novos no QA:
+  - `WhatsApp dispatch (falhas reais)`
+  - `Instagram DM entrada`
+
+Validacao realizada:
+- comando:
+  - `cmd /c .\\.venv\\Scripts\\python.exe qa_tudo.py --no-dashboard --no-pause`
+- resultado:
+  - `PASS=11`, `WARN=2`, `FAIL=2`
+- falhas que agora aparecem claramente:
+  - WhatsApp: `131030` (numero destino nao permitido na allow list de teste), com evidencia de erro historico `190/463` (token expirado).
+  - Instagram: nenhum inbound no periodo (`inbound_count=0`) mesmo com readiness de integracao.
+
+Relatorio do dia:
+- arquivo gerado: `relatorio_gabrielf_14_04.md`
+- conteudo: resumo executivo, cronologia, evidencias de QA/deploy, riscos e plano de fechamento.
+
+Revisao solicitada:
+- `relatorio_gabrielf_14_04.md` ajustado para deixar bem claro que:
+  - LLM ja esta em producao pronto para uso como agente inteligente;
+  - maior dificuldade/impeditivo segue sendo Meta (WhatsApp/Instagram ainda nao conectados 100%).
