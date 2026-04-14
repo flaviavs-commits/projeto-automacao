@@ -74,6 +74,12 @@ class Settings(BaseSettings):
         default="qwen2.5:1.5b-instruct,qwen2.5:7b-instruct,mistral-nemo:12b-instruct",
         alias="LLM_TEST_MODELS",
     )
+    llm_quality_retry_enabled: bool = Field(default=True, alias="LLM_QUALITY_RETRY_ENABLED")
+    llm_quality_fallback_model: str = Field(
+        default="qwen2.5:1.5b-instruct",
+        alias="LLM_QUALITY_FALLBACK_MODEL",
+    )
+    llm_quality_min_chars: int = Field(default=90, alias="LLM_QUALITY_MIN_CHARS")
     local_storage_path: str = Field(default="storage", alias="LOCAL_STORAGE_PATH")
     log_level: str = Field(default="INFO", alias="LOG_LEVEL")
 

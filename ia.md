@@ -963,3 +963,32 @@ Validacao final:
 - ganho de latencia observado:
   - antes do tuning: `process_incoming_message` ~`11.1s`
   - apos tuning: `process_incoming_message` ~`5.19s`.
+
+## Registro de task - 2026-04-14 (qualidade de resposta LLM com fallback de modelo)
+
+Task executada: continuidade da frente LLM para melhorar qualidade comercial mantendo latencia controlada.
+
+Entregas aplicadas:
+- `app/services/llm_reply_service.py` evoluido com gate de qualidade da resposta:
+  - detecta resposta curta/generica (`LLM_QUALITY_MIN_CHARS` + marcadores de baixa qualidade);
+  - em caso de baixa qualidade, tenta segunda geracao com modelo fallback configurado;
+  - preserva resposta inicial quando fallback nao melhora.
+- Novo fluxo de observabilidade no retorno do LLM:
+  - `requested_model`
+  - `attempted_models`
+  - `quality_issue`
+  - `quality_retry_status`
+- Prompt do atendente passou a respeitar explicitamente `LLM_DOMAIN_LOCK` + `LLM_DOMAIN_DESCRIPTION` no texto de sistema.
+- Configuracoes adicionadas:
+  - `LLM_QUALITY_RETRY_ENABLED`
+  - `LLM_QUALITY_FALLBACK_MODEL`
+  - `LLM_QUALITY_MIN_CHARS`
+  - arquivos atualizados: `app/core/config.py`, `.env.example`, `README.md`.
+
+Validacao da rodada:
+- `cmd /c .\\.venv\\Scripts\\python.exe -m compileall app road_test` -> sucesso.
+- `cmd /c .\\.venv\\Scripts\\python.exe qa_tudo.py --no-dashboard --no-pause` -> `PASS=8`, `WARN=1`, `FAIL=0`.
+  - `WARN` remoto: endpoint Railway indisponivel no ambiente local desta sessao (`WinError 10061`).
+
+Proximo passo recomendado desta frente:
+- Em producao, manter `LLM_MODEL` leve (ex.: `qwen2.5:0.5b-instruct`) e definir `LLM_QUALITY_FALLBACK_MODEL=qwen2.5:1.5b-instruct`, monitorando `quality_retry_status` e `llm_model` nos logs do worker para calibrar custo x qualidade.

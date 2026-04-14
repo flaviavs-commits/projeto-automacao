@@ -668,3 +668,29 @@ Resultado:
 - todos os servicos ficaram em `SUCCESS`.
 - health em producao: `ok`.
 - latencia caiu de ~`11.1s` para ~`5.19s` no processamento da mensagem com LLM.
+
+## Registro de task - 2026-04-14 (melhoria de qualidade LLM com fallback inteligente)
+
+Task executada: seguir da frente LLM para subir qualidade de resposta comercial sem perder o ganho de performance.
+
+O que foi entregue:
+- adicionei no `LLMReplyService` uma etapa de qualidade:
+  - se a resposta vier curta/generica, ativa tentativa com modelo fallback;
+  - se o fallback nao for melhor, mantem a primeira resposta;
+  - se o fallback for melhor, usa o modelo mais forte so nesse caso.
+- inclui sinalizacao no retorno do servico:
+  - `requested_model`
+  - `attempted_models`
+  - `quality_issue`
+  - `quality_retry_status`
+- conectei o prompt ao lock de dominio configuravel (`LLM_DOMAIN_LOCK` + `LLM_DOMAIN_DESCRIPTION`).
+- adicionei novas variaveis de configuracao/documentacao:
+  - `LLM_QUALITY_RETRY_ENABLED`
+  - `LLM_QUALITY_FALLBACK_MODEL`
+  - `LLM_QUALITY_MIN_CHARS`
+  - atualizados: `app/core/config.py`, `.env.example` e `README.md`.
+
+Validacao executada:
+- `cmd /c .\\.venv\\Scripts\\python.exe -m compileall app road_test` -> ok.
+- `cmd /c .\\.venv\\Scripts\\python.exe qa_tudo.py --no-dashboard --no-pause` -> `PASS=8`, `WARN=1`, `FAIL=0`.
+  - warn unico foi remoto (Railway inacessivel no ambiente local desta sessao).

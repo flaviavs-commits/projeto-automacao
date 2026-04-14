@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import sys
+import unicodedata
 from pathlib import Path
 from typing import Any
 
@@ -53,6 +54,26 @@ class LLMReplyService(BaseExternalService):
         "ainda nao conheco",
         "nunca fui",
     }
+    _QUALITY_CRITICAL_INTENT_KEYWORDS = {
+        "valor",
+        "preco",
+        "orcamento",
+        "agendar",
+        "agendamento",
+        "horario",
+        "disponibilidade",
+        "reserva",
+    }
+    _LOW_QUALITY_MARKERS = {
+        "como ia",
+        "como modelo",
+        "como assistente virtual",
+        "nao tenho acesso",
+        "nao posso acessar",
+        "nao posso ajudar com isso",
+        "nao consigo ajudar com isso",
+    }
+
     def generate_reply(
         self,
         *,
@@ -76,6 +97,7 @@ class LLMReplyService(BaseExternalService):
         model_name = str(model_override or settings.llm_model).strip()
         if not model_name:
             return self.invalid_payload(action, "model is required")
+        quality_fallback_model = self._resolve_quality_fallback_model(model_name)
 
         options: dict[str, Any] = {
             "temperature": settings.llm_temperature,
@@ -99,27 +121,60 @@ class LLMReplyService(BaseExternalService):
         if settings.llm_keep_alive.strip():
             payload["keep_alive"] = settings.llm_keep_alive.strip()
 
-        url = settings.llm_base_url.rstrip("/") + "/api/chat"
-        result = self._request(
-            "POST",
-            url,
-            json_payload=payload,
-            timeout_seconds=max(5.0, float(settings.llm_timeout_seconds)),
+        primary_reply, result = self._request_reply_text(
+            action=action,
+            payload=payload,
         )
-        if result.get("status") != "ok":
+        if result is not None:
             return result
-
-        body = result.get("body")
-        reply_text = self._extract_reply_text(body)
-        if not reply_text:
+        if not primary_reply:
             return self.request_failed(action, "empty_llm_response")
-        reply_text = self._ensure_final_cta(reply_text, mandatory_link)
+
+        selected_model = model_name
+        selected_reply = primary_reply
+        quality_issue = self._detect_quality_issue(
+            user_text=cleaned_user_text,
+            reply_text=primary_reply,
+        )
+        quality_retry_status = "not_needed"
+        attempted_models = [model_name]
+
+        if quality_issue and quality_fallback_model:
+            quality_retry_status = "triggered"
+            attempted_models.append(quality_fallback_model)
+            fallback_reply, fallback_result = self._request_reply_text(
+                action=action,
+                payload={
+                    **payload,
+                    "model": quality_fallback_model,
+                },
+            )
+            if fallback_reply:
+                fallback_issue = self._detect_quality_issue(
+                    user_text=cleaned_user_text,
+                    reply_text=fallback_reply,
+                )
+                if fallback_issue is None or len(fallback_reply) >= len(primary_reply):
+                    selected_model = quality_fallback_model
+                    selected_reply = fallback_reply
+                    quality_issue = fallback_issue
+                    quality_retry_status = "fallback_used"
+                else:
+                    quality_retry_status = "fallback_not_better"
+            elif fallback_result is not None:
+                quality_retry_status = "fallback_failed"
+
+        reply_text = self._ensure_final_cta(selected_reply, mandatory_link)
 
         return ExternalServiceResult(
             status="completed",
             service=self.service_name,
             action=action,
-            model=model_name,
+            model=selected_model,
+            requested_model=model_name,
+            attempted_models=attempted_models,
+            quality_issue=quality_issue,
+            quality_retry_status=quality_retry_status,
             routing_link=mandatory_link,
             reply_text=reply_text,
         )
@@ -131,6 +186,7 @@ class LLMReplyService(BaseExternalService):
         context_messages: list[dict[str, Any]],
         key_memories: list[dict[str, Any]],
     ) -> list[dict[str, str]]:
+        domain_description = " ".join(settings.llm_domain_description.split()).strip()
         knowledge_text = self._load_knowledge_text()
         system_prompt = (
             "Voce e o atendente comercial virtual da FC VIP (estudio de fotografia e video). "
@@ -149,6 +205,11 @@ class LLMReplyService(BaseExternalService):
             "Se perguntarem seu nome, responda exatamente: 'Eu sou o Agente FC VIP'. "
             "Toda resposta final deve ter CTA claro e link oficial adequado."
         )
+        if settings.llm_domain_lock:
+            if domain_description:
+                system_prompt += f" Dominio permitido para atendimento: {domain_description}."
+            else:
+                system_prompt += " Dominio permitido para atendimento: estudio, fotografia, video e agendamento."
         if knowledge_text:
             system_prompt += "\n\nBase oficial FC VIP:\n" + knowledge_text
         if key_memories:
@@ -170,6 +231,60 @@ class LLMReplyService(BaseExternalService):
 
         messages.append({"role": "user", "content": user_text})
         return messages
+
+    def _request_reply_text(
+        self,
+        *,
+        action: str,
+        payload: dict[str, Any],
+    ) -> tuple[str | None, ExternalServiceResult | None]:
+        url = settings.llm_base_url.rstrip("/") + "/api/chat"
+        result = self._request(
+            "POST",
+            url,
+            json_payload=payload,
+            timeout_seconds=max(5.0, float(settings.llm_timeout_seconds)),
+        )
+        if result.get("status") != "ok":
+            return None, result
+
+        body = result.get("body")
+        reply_text = self._extract_reply_text(body)
+        if not reply_text:
+            return None, self.request_failed(action, "empty_llm_response")
+        return reply_text, None
+
+    def _resolve_quality_fallback_model(self, current_model: str) -> str | None:
+        if not settings.llm_quality_retry_enabled:
+            return None
+        candidate = str(settings.llm_quality_fallback_model or "").strip()
+        if not candidate or candidate == current_model:
+            return None
+        return candidate
+
+    def _detect_quality_issue(self, *, user_text: str, reply_text: str) -> str | None:
+        compact_reply = " ".join(str(reply_text or "").split()).strip()
+        if not compact_reply:
+            return "empty_reply"
+
+        min_chars = max(40, int(settings.llm_quality_min_chars))
+        if len(compact_reply) < min_chars:
+            return "reply_too_short"
+
+        normalized_reply = self._normalize_for_quality(compact_reply)
+        if any(marker in normalized_reply for marker in self._LOW_QUALITY_MARKERS):
+            return "low_quality_marker"
+
+        normalized_user = self._normalize_for_quality(user_text)
+        critical_intent = any(keyword in normalized_user for keyword in self._QUALITY_CRITICAL_INTENT_KEYWORDS)
+        if critical_intent and len(compact_reply) < (min_chars + 30):
+            return "critical_intent_low_depth"
+        return None
+
+    def _normalize_for_quality(self, value: str) -> str:
+        lowered = str(value or "").lower()
+        ascii_value = unicodedata.normalize("NFKD", lowered).encode("ascii", "ignore").decode("ascii")
+        return " ".join(ascii_value.split())
 
     def _load_knowledge_text(self) -> str:
         path_raw = settings.llm_knowledge_path.strip()

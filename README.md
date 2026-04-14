@@ -116,6 +116,9 @@ Copie `.env.example` para `.env` e ajuste os valores locais. As variaveis suport
 - `LLM_DOMAIN_DESCRIPTION`
 - `LLM_KNOWLEDGE_PATH`
 - `LLM_TEST_MODELS`
+- `LLM_QUALITY_RETRY_ENABLED`
+- `LLM_QUALITY_FALLBACK_MODEL`
+- `LLM_QUALITY_MIN_CHARS`
 - `LOCAL_STORAGE_PATH`
 - `LOG_LEVEL`
 
@@ -164,6 +167,10 @@ celery -A app.workers.celery_app.celery_app worker --loglevel=info
 - A base de conhecimento usada no prompt deve ser mantida em `LLM_KNOWLEDGE_PATH` (padrao: `app/prompts/studio_agendamento.md`).
 - O arquivo `app/prompts/studio_agendamento.md` foi estruturado para o atendimento comercial FC VIP, com prompt final, regras, exemplos, anti-desvio, conversao e fallback humano.
 - Para road test multi-modelo, configure `LLM_TEST_MODELS` com a lista CSV dos modelos disponiveis no runtime local.
+- Para qualidade comercial com latencia controlada, mantenha `LLM_MODEL` em modelo leve e habilite:
+  - `LLM_QUALITY_RETRY_ENABLED=true`
+  - `LLM_QUALITY_FALLBACK_MODEL` para um modelo mais forte (ex.: `qwen2.5:1.5b-instruct`)
+  - `LLM_QUALITY_MIN_CHARS` para acionar retry quando a resposta vier curta/generica.
 
 ## LLM no Railway (servico separado)
 
