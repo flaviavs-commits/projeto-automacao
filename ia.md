@@ -1192,3 +1192,60 @@ Deploy e validacao em producao:
 - Testes `--once` em producao:
   - mensagem de agendamento retornou `llm_model=rule_schedule_site_only`, com texto sem confirmar horario e link de agendamento.
   - mensagem ofensiva retornou `llm_model=rule_respect_redirect`, sem resposta genérica de "sou IA".
+
+## Registro de task - 2026-04-15 (politica de respostas genericas para casos nao especificos)
+
+Task executada: aplicar regra solicitada de negocio:
+- apenas respostas explicitamente especificas permanecem deterministicas;
+- todos os demais casos passam a usar resposta generica pelo proprio modelo LLM.
+
+Alteracoes aplicadas:
+- `app/services/llm_reply_service.py`:
+  - removida a regra fixa `rule_respect_redirect` (linguagem ofensiva) para voltar ao comportamento generico do modelo nesses casos.
+  - mantidas regras especificas:
+    - `rule_close` (despedida obrigatoria);
+    - `rule_human_handoff` (gatilhos de risco);
+    - `rule_schedule_site_only` (agendamento somente via site, sem confirmar horario manual).
+
+## Registro de task - 2026-04-15 (stress test de frases de locacao)
+
+Task executada: stress test em producao com 15 frases relacionadas a locacao do estudio via `road_test/chat_railway_prod.py --once`.
+
+Resumo de resultado:
+- Regras especificas funcionaram como esperado:
+  - `rule_schedule_site_only`: agendamento/disponibilidade.
+  - `rule_human_handoff`: >5 pessoas, confete, cancelamento pago.
+  - `rule_close`: despedida obrigatoria.
+- Casos genericos com LLM apresentaram inconsistencias de dominio em algumas perguntas (ex.: endereco inventado, resposta fora de contexto para microfone/tour/estrutura).
+- Todos os requests vieram com `llm_status=completed`; `dispatch_status=request_failed` permaneceu igual aos testes anteriores.
+
+## Registro de task - 2026-04-15 (bateria automatizada 100 casos - locacao)
+
+Task executada: implementacao e execucao de bateria automatizada de stress em producao para frases de locacao.
+
+Implementacao:
+- novo script: `road_test/stress_locacao_suite.py`
+  - gera pool de casos por categoria;
+  - executa em lote via webhook de producao;
+  - avalia aderencia (regras especificas e checagens de dominio);
+  - exporta relatorio JSON + Markdown em `.qa_tmp`.
+
+Execucao:
+- comando: `python -u road_test/stress_locacao_suite.py --app-secret <secret> --size 100`
+- saidas:
+  - `.qa_tmp/stress_locacao_20260415_163642.json`
+  - `.qa_tmp/stress_locacao_20260415_163642.md`
+
+Resultado agregado:
+- total: 100
+- aprovados: 77
+- reprovados: 23
+- taxa de acerto: 77.0%
+
+Principais falhas:
+- `location_missing_official_reference` (9)
+- `missing_handoff_text` (6)
+- `audio_missing_negative_constraint` (6)
+
+Observacao tecnica:
+- O classificador de `paid_changes` ainda conflita com regra de agendamento em algumas frases (ex.: "trocar horario apos pagamento"), desviando para `rule_schedule_site_only` em vez de `rule_human_handoff`.

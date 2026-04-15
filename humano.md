@@ -848,3 +848,36 @@ Deploy/validacao:
 - validado com `road_test/chat_railway_prod.py --once`:
   - pedido de horario -> resposta correta de agendamento via site.
   - mensagem ofensiva -> resposta profissional de redirecionamento FC VIP.
+
+## Registro de task - 2026-04-15 (ajuste de regra: respostas nao especificas voltam ao modelo)
+
+Task executada: conforme solicitacao, deixar respostas nao especificas como genericas do proprio LLM.
+
+O que foi alterado:
+- removi a regra fixa de redirecionamento para mensagens ofensivas em `app/services/llm_reply_service.py`.
+- mantive apenas regras deterministicas de resposta especifica (despedida obrigatoria, handoff de risco e agendamento via site).
+
+## Registro de task - 2026-04-15 (stress test de locacao em producao)
+
+Task executada: rodada de stress test com 15 frases de atendimento de locacao para avaliar comportamento atual (regras especificas + respostas genericas do LLM).
+
+Resultado:
+- regras especificas responderam corretamente nos cenarios previstos.
+- respostas genericas do modelo ainda tiveram desvios de base em parte dos casos (informacao inventada e respostas fora do escopo FC VIP).
+
+## Registro de task - 2026-04-15 (bateria automatizada 100 casos)
+
+Task executada: criacao + execucao de uma bateria de 100 frases para locacao em producao.
+
+Detalhes:
+- script criado: `road_test/stress_locacao_suite.py`.
+- relatorios gerados:
+  - `.qa_tmp/stress_locacao_20260415_163642.json`
+  - `.qa_tmp/stress_locacao_20260415_163642.md`
+
+Resumo:
+- 77/100 aprovados (77.0%).
+- maiores problemas concentrados em:
+  - perguntas de localizacao (respostas sem endereco oficial);
+  - perguntas de audio (modelo ainda afirma disponibilidade em alguns casos);
+  - frases de cancelamento/reagendamento pago parcialmente roteadas como agendamento comum.

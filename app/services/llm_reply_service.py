@@ -179,19 +179,6 @@ class LLMReplyService(BaseExternalService):
         "nao posso ajudar com isso",
         "nao consigo ajudar com isso",
     }
-    _ABUSIVE_MARKERS = {
-        "vai tomar no cu",
-        "filho da puta",
-        "fdp",
-        "lixo imundo",
-        "arrombado",
-        "otario",
-        "otario",
-        "idiota",
-        "porra",
-        "caralho",
-    }
-
     def generate_reply(
         self,
         *,
@@ -246,25 +233,6 @@ class LLMReplyService(BaseExternalService):
             )
 
         cta_link, cta_reason = self._select_cta_link(cleaned_user_text, context_messages, key_memories)
-        normalized_user = self._normalize_for_quality(cleaned_user_text)
-
-        if self._contains_abusive_language(normalized_user):
-            requested_model = str(model_override or settings.llm_model).strip() or "unknown"
-            return ExternalServiceResult(
-                status="completed",
-                service=self.service_name,
-                action=action,
-                model="rule_respect_redirect",
-                requested_model=requested_model,
-                attempted_models=["rule_respect_redirect"],
-                quality_issue=None,
-                quality_retry_status="not_needed",
-                routing_link=None,
-                reply_text=(
-                    "Vamos manter o atendimento de forma respeitosa. "
-                    "Posso te ajudar com locacao do estudio, estrutura, valores e agendamento pelo site."
-                ),
-            )
 
         if cta_reason == "agendar":
             requested_model = str(model_override or settings.llm_model).strip() or "unknown"
@@ -778,10 +746,6 @@ class LLMReplyService(BaseExternalService):
                 return True
         return False
 
-    def _contains_abusive_language(self, normalized_user_text: str) -> bool:
-        if not normalized_user_text:
-            return False
-        return any(marker in normalized_user_text for marker in self._ABUSIVE_MARKERS)
 
     def _build_identity_reply(self, user_text: str, key_memories: list[dict[str, Any]]) -> str | None:
         normalized = self._normalize_for_quality(user_text)
