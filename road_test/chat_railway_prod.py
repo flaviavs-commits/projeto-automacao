@@ -148,9 +148,17 @@ def send_message_and_wait_reply(
         except Exception:  # noqa: BLE001
             detail = webhook_response.text
         if webhook_response.status_code == 401 and "Invalid Meta signature" in detail:
+            secret_hint = ""
+            normalized_secret = str(app_secret or "").strip()
+            if normalized_secret in {"SEU_META_APP_SECRET", "CHANGE_ME", "change-me"} or len(normalized_secret) < 16:
+                secret_hint = (
+                    " Dica: voce parece estar usando um placeholder de secret. "
+                    "Substitua pelo App Secret real do Meta Developer (o mesmo configurado no Railway em META_APP_SECRET)."
+                )
             raise RuntimeError(
                 "webhook_failed status=401 invalid_meta_signature "
-                "(use --app-secret or configure META_APP_SECRET/INSTAGRAM_APP_SECRET local env)"
+                "(use --app-secret or configure META_APP_SECRET/INSTAGRAM_APP_SECRET local env)."
+                + secret_hint
             )
         raise RuntimeError(f"webhook_failed status={webhook_response.status_code} detail={detail[:500]}")
 

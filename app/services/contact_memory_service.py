@@ -36,6 +36,31 @@ class ContactMemoryService:
         "ainda nao conheco",
         "nunca fui",
     }
+    _SCHEDULE_INTENT_MARKERS = {
+        "agendar",
+        "agendamento",
+        "marcar",
+        "reserva",
+        "reservar",
+        "disponibilidade",
+        "horario",
+        "vaga",
+    }
+    _DISCOVER_INTENT_MARKERS = {
+        "conhecer",
+        "como funciona",
+        "estrutura",
+        "endereco",
+        "localizacao",
+        "onde fica",
+    }
+    _HOURS_INFO_MARKERS = {
+        "horario de funcionamento",
+        "que horas abre",
+        "que horas fecha",
+        "funciona ate",
+        "funciona de",
+    }
 
     _SERVICE_MAP = {
         "ensaio": "ensaio_fotografico",
@@ -66,11 +91,15 @@ class ContactMemoryService:
     _DURATION_RE = re.compile(r"\b([1-9])\s*(h|hora|horas)\b")
     _PEOPLE_RE = re.compile(r"\b(\d{1,2})\s*(pessoa|pessoas)\b")
     _NAME_RE = re.compile(
-        r"\bmeu\s+nome\s*(?:e|é)\s+([A-Za-zÀ-ÿ][A-Za-zÀ-ÿ'\- ]{1,60})\b",
+        r"\bmeu\s+nome\s*(?:e|\u00e9)\s+([A-Za-z\u00C0-\u00FF][A-Za-z\u00C0-\u00FF'\- ]{1,60})\b",
         flags=re.IGNORECASE,
     )
     _I_AM_RE = re.compile(
-        r"\b(?:eu\s+sou|sou)\s+([A-Za-zÀ-ÿ][A-Za-zÀ-ÿ'\- ]{1,60})\b",
+        r"\b(?:eu\s+sou|sou)\s+([A-Za-z\u00C0-\u00FF][A-Za-z\u00C0-\u00FF'\- ]{1,60})\b",
+        flags=re.IGNORECASE,
+    )
+    _LOCATION_RE = re.compile(
+        r"\b(?:moro em|sou de|vim de|resido em)\s+([A-Za-z\u00C0-\u00FF][A-Za-z\u00C0-\u00FF'\- ]{1,60})\b",
         flags=re.IGNORECASE,
     )
 
@@ -150,6 +179,10 @@ class ContactMemoryService:
         if name_candidate:
             candidates.append(name_candidate)
 
+        location_candidate = self._extract_location(original_text)
+        if location_candidate:
+            candidates.append(location_candidate)
+
         if any(marker in normalized_text for marker in self._OLD_CUSTOMER_MARKERS):
             candidates.append(
                 {
@@ -182,6 +215,25 @@ class ContactMemoryService:
                     "memory_value": "nao",
                     "importance": 5,
                     "confidence": 0.95,
+                }
+            )
+
+        if any(marker in normalized_text for marker in self._SCHEDULE_INTENT_MARKERS):
+            candidates.append(
+                {
+                    "memory_key": "intencao_principal",
+                    "memory_value": "agendar",
+                    "importance": 4,
+                    "confidence": 0.88,
+                }
+            )
+        elif any(marker in normalized_text for marker in self._DISCOVER_INTENT_MARKERS):
+            candidates.append(
+                {
+                    "memory_key": "intencao_principal",
+                    "memory_value": "conhecer",
+                    "importance": 4,
+                    "confidence": 0.85,
                 }
             )
 
@@ -247,6 +299,16 @@ class ContactMemoryService:
                 }
             )
 
+        if any(marker in normalized_text for marker in self._HOURS_INFO_MARKERS):
+            candidates.append(
+                {
+                    "memory_key": "perguntou_horario_funcionamento",
+                    "memory_value": "true",
+                    "importance": 3,
+                    "confidence": 0.84,
+                }
+            )
+
         day_hits = [marker for marker in self._DAY_MARKERS if marker in normalized_text]
         if day_hits:
             candidates.append(
@@ -260,12 +322,21 @@ class ContactMemoryService:
 
         time_hits = [match.group(0) for match in self._TIME_RE.finditer(normalized_text)]
         if time_hits:
+            compact_time_hits = ", ".join(time_hits[:3])
             candidates.append(
                 {
                     "memory_key": "preferencia_horario",
-                    "memory_value": ", ".join(time_hits[:3]),
+                    "memory_value": compact_time_hits,
                     "importance": 4,
                     "confidence": 0.9,
+                }
+            )
+            candidates.append(
+                {
+                    "memory_key": "horario_perguntado",
+                    "memory_value": compact_time_hits,
+                    "importance": 5,
+                    "confidence": 0.92,
                 }
             )
 
@@ -331,7 +402,7 @@ class ContactMemoryService:
         if not raw:
             return None
 
-        cleaned = re.sub(r"[^A-Za-zÀ-ÿ'\- ]+", " ", raw)
+        cleaned = re.sub(r"[^A-Za-z\u00C0-\u00FF'\- ]+", " ", raw)
         cleaned = " ".join(cleaned.split()).strip()
         if not cleaned:
             return None
@@ -357,4 +428,42 @@ class ContactMemoryService:
             "memory_value": display,
             "importance": 5,
             "confidence": 0.9,
+        }
+
+    def _extract_location(self, original_text: str) -> dict | None:
+        match = self._LOCATION_RE.search(original_text or "")
+        if not match:
+            return None
+
+        raw = str(match.group(1) or "").strip()
+        cleaned = re.sub(r"[^A-Za-z\u00C0-\u00FF'\- ]+", " ", raw)
+        cleaned = " ".join(cleaned.split()).strip()
+        if not cleaned:
+            return None
+
+        stop_words = {"e", "que", "pra", "para", "com", "porque", "mas", "quero", "queria"}
+        words = []
+        for token in cleaned.split(" "):
+            lowered = self._normalize(token)
+            if words and lowered in stop_words:
+                break
+            words.append(token)
+
+        cleaned = " ".join(words[:4]).strip()
+        if not cleaned:
+            return None
+
+        normalized = self._normalize(cleaned)
+        if normalized in {"aqui", "ai", "estudio"}:
+            return None
+
+        display = " ".join(word[:1].upper() + word[1:] for word in cleaned.split(" ") if word)
+        if not display:
+            return None
+
+        return {
+            "memory_key": "localidade_cliente",
+            "memory_value": display,
+            "importance": 3,
+            "confidence": 0.82,
         }

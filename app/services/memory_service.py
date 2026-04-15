@@ -15,10 +15,12 @@ class MemoryService:
     """Builds compact conversation context for prompt assembly."""
 
     def build_context(self, conversation_id: str | None = None) -> dict:
+        context_window_size = settings.llm_effective_context_messages
         if not conversation_id:
             return {
                 "status": "ready",
                 "conversation_id": conversation_id,
+                "context_window_size": context_window_size,
                 "memory_items": [],
                 "key_memories": [],
             }
@@ -29,6 +31,7 @@ class MemoryService:
             return {
                 "status": "invalid_conversation_id",
                 "conversation_id": conversation_id,
+                "context_window_size": context_window_size,
                 "memory_items": [],
                 "key_memories": [],
             }
@@ -39,6 +42,7 @@ class MemoryService:
                 return {
                     "status": "conversation_not_found",
                     "conversation_id": conversation_id,
+                    "context_window_size": context_window_size,
                     "memory_items": [],
                     "key_memories": [],
                 }
@@ -48,7 +52,7 @@ class MemoryService:
                     select(Message)
                     .where(Message.conversation_id == conversation_uuid)
                     .order_by(Message.created_at.desc())
-                    .limit(max(1, settings.llm_context_messages)),
+                    .limit(context_window_size),
                 )
                 .scalars()
                 .all()
@@ -101,6 +105,7 @@ class MemoryService:
         return {
             "status": "ready",
             "conversation_id": conversation_id,
+            "context_window_size": context_window_size,
             "memory_items": memory_items,
             "key_memories": key_memories,
         }

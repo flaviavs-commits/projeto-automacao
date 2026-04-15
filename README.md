@@ -112,6 +112,7 @@ Copie `.env.example` para `.env` e ajuste os valores locais. As variaveis suport
 - `LLM_TEMPERATURE`
 - `LLM_MAX_OUTPUT_TOKENS`
 - `LLM_CONTEXT_MESSAGES`
+- `LLM_OFFTOPIC_TOLERANCE_TURNS`
 - `LLM_DOMAIN_LOCK`
 - `LLM_DOMAIN_DESCRIPTION`
 - `LLM_KNOWLEDGE_PATH`
@@ -165,6 +166,8 @@ celery -A app.workers.celery_app.celery_app worker --loglevel=info
 - Integracao atual espera endpoint compativel com Ollama em `LLM_BASE_URL` (padrao: `http://127.0.0.1:11434`).
 - Modelo padrao de configuracao: `qwen2.5:7b-instruct` (ajustavel por `LLM_MODEL`).
 - O lock de dominio e aplicado por `LLM_DOMAIN_LOCK=true`, restringindo o atendimento para estudio e agendamento.
+- O contexto efetivo para conversa e retomada e de `3-5` mensagens recentes (controlado por `LLM_CONTEXT_MESSAGES`, default `5`).
+- A tolerancia a desvios leves pode ser calibrada por `LLM_OFFTOPIC_TOLERANCE_TURNS` (default `2`), mantendo redirecionamento ao tema do estudio.
 - A base de conhecimento usada no prompt deve ser mantida em `LLM_KNOWLEDGE_PATH` (padrao: `app/prompts/studio_agendamento.md`).
 - O arquivo `app/prompts/studio_agendamento.md` foi estruturado para o atendimento comercial FC VIP, com prompt final, regras, exemplos, anti-desvio, conversao e fallback humano.
 - Para road test multi-modelo, configure `LLM_TEST_MODELS` com a lista CSV dos modelos disponiveis no runtime local.

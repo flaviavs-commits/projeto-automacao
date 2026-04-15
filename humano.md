@@ -774,3 +774,77 @@ Revisao solicitada:
 - `relatorio_gabrielf_14_04.md` ajustado para deixar bem claro que:
   - LLM ja esta em producao pronto para uso como agente inteligente;
   - maior dificuldade/impeditivo segue sendo Meta (WhatsApp/Instagram ainda nao conectados 100%).
+
+## Registro de task - 2026-04-15 (continuacao do treinamento LLM com contexto e memoria)
+
+Task executada: seguir do ultimo ponto da frente LLM para deixar o atendimento mais humano, menos preso a palavra-chave isolada e mais consistente com contexto recente do cliente.
+
+O que foi feito:
+- ajustei o comportamento para usar janela curta de conversa (`3-5` mensagens, default `5`) em vez de historico amplo.
+- deixei o tom mais natural no prompt do agente, mantendo foco comercial no estudio.
+- aumentei a tolerancia para desvios leves de assunto:
+  - agora ele pode responder de forma humana em ate 1-2 frases;
+  - em seguida redireciona com suavidade para o tema do estudio/agendamento;
+  - se a insistencia no desvio continuar, redireciona com firmeza.
+- evolui a logica de decisao de link/CTA para considerar:
+  - mensagem atual;
+  - contexto recente;
+  - memorias ja salvas.
+  Isso reduz dependencia de keyword unica.
+- ampliei memorias-chave extraidas de mensagens claras:
+  - localidade (`localidade_cliente`)
+  - intencao principal (`agendar`/`conhecer`)
+  - horario perguntado e pergunta de horario de funcionamento
+  - mantendo nome, horario preferido, periodo, duracao, numero de pessoas etc.
+- atualizei `README.md` e `.env.example` com os novos parametros e defaults.
+- criei testes unitarios para garantir que a mudanca fique estavel:
+  - `tests/test_contact_memory_service.py`
+  - `tests/test_llm_reply_service.py`
+
+Validacao da rodada:
+- compilacao e testes locais executados em seguida.
+
+## Registro de task - 2026-04-15 (diretrizes FC VIP: Agente FC VIP - versao definitiva)
+
+Task executada: incorporar novas diretrizes de atendimento do Agente FC VIP (tom formal, regras de envio de link, gatilhos de risco e despedida obrigatoria).
+
+Resumo:
+- atualizei `app/prompts/studio_agendamento.md` com as diretrizes completas (estrutura, equipamentos, capacidade, regras e fluxos).
+- ajustei `app/services/llm_reply_service.py` para nao "empurrar" link em toda resposta e para aplicar:
+  - envio de link apenas quando: agendar/disponibilidade, valores (primeira vez) ou tour virtual;
+  - encerramento com a frase obrigatoria exatamente;
+  - handoff imediato para humano em cenarios de risco (ex.: +5 pessoas, sujeira/efeitos, cancelamento/reagendamento pago).
+
+## Registro de task - 2026-04-15 (road test: dica para invalid_meta_signature)
+
+Task executada: ajustar o script de chat em producao para orientar melhor quando a assinatura do webhook falha.
+
+O que foi feito:
+- `road_test/chat_railway_prod.py` agora inclui uma dica extra se detectar que o `--app-secret` parece placeholder (ex.: `SEU_META_APP_SECRET`) ou esta muito curto, orientando a usar o App Secret real configurado no Railway (`META_APP_SECRET`).
+
+## Registro de task - 2026-04-15 (deploy Railway + ajuste gatilho >5 pessoas)
+
+Task executada: subir alteracoes no Railway e corrigir falha no gatilho de transferencia para humano quando cliente informa equipe acima de 5 pessoas.
+
+Resumo:
+- deploy executado em `projeto-automacao` e `worker`, ambos com status `SUCCESS`.
+- corrigi regex em `app/services/llm_reply_service.py` na funcao `_mentions_more_than_five_people` (escape incorreto impedia detectar numeros).
+- teste em producao confirmado com `--once "vamos em 6 pessoas"` retornando handoff humano com motivo de capacidade excedida.
+
+## Registro de task - 2026-04-15 (correcao de contexto no atendimento)
+
+Task executada: resolver dois problemas reportados em producao:
+- bot "confirmando horario" no chat em vez de orientar site;
+- bot respondendo como IA generica fora do contexto FC VIP em mensagem ofensiva.
+
+O que foi feito:
+- em `app/services/llm_reply_service.py` implementei camada deterministica antes do LLM:
+  - `rule_schedule_site_only` para pedidos de agendamento (sem confirmar horario manualmente).
+  - `rule_respect_redirect` para linguagem ofensiva, mantendo postura profissional e foco no estudo.
+- adicionei detector `_contains_abusive_language` para acionar o redirecionamento.
+
+Deploy/validacao:
+- deploy no Railway em `projeto-automacao` e `worker`, ambos com `SUCCESS`.
+- validado com `road_test/chat_railway_prod.py --once`:
+  - pedido de horario -> resposta correta de agendamento via site.
+  - mensagem ofensiva -> resposta profissional de redirecionamento FC VIP.

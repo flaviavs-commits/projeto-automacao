@@ -1097,3 +1097,98 @@ Revisao do relatorio (mesmo dia):
 - `relatorio_gabrielf_14_04.md` reescrito para deixar explicito:
   - LLM ja esta em producao e pronto para operar como agente inteligente;
   - principal impeditivo atual segue sendo a conexao Meta (WhatsApp/Instagram ainda nao 100% conectados).
+
+## Registro de task - 2026-04-15 (continuidade de treinamento LLM: contexto 3-5, memoria-chave e tolerancia a desvio)
+
+Task executada: continuidade da frente LLM para respostas mais fluidas e humanas, reduzindo dependencia de keyword isolada e reforcando contexto recente + memorias-chave.
+
+Entregas aplicadas:
+- `app/core/config.py`:
+  - `LLM_TEMPERATURE` default ajustado para `0.25` (mais naturalidade sem perder controle).
+  - `LLM_CONTEXT_MESSAGES` default ajustado para `5`.
+  - novo `LLM_OFFTOPIC_TOLERANCE_TURNS` (default `2`).
+  - nova propriedade `llm_effective_context_messages` com clamp de janela para `3-5` mensagens.
+- `app/services/memory_service.py`:
+  - contexto recente agora respeita `llm_effective_context_messages` (janela curta 3-5).
+  - retorno inclui `context_window_size` para observabilidade.
+- `app/services/contact_memory_service.py`:
+  - ampliacao de memoria-chave sem perder filtro de ambiguidade.
+  - novas memorias extraidas quando claras:
+    - `localidade_cliente`
+    - `intencao_principal` (`agendar`/`conhecer`)
+    - `perguntou_horario_funcionamento`
+    - `horario_perguntado`
+  - mantidas memorias anteriores (nome, horario, periodo, duracao, pessoas, orcamento etc).
+- `app/services/llm_reply_service.py`:
+  - prompt de sistema ajustado para conversa mais humana e natural.
+  - reforco de uso de contexto recente (3-5) + memorias antes da resposta.
+  - tolerancia moderada a desvio leve: aceita 1-2 frases naturais e redireciona suavemente; com persistencia de desvio, redireciona com firmeza.
+  - selecao de CTA evoluida para inferencia por contexto + memorias (nao apenas keyword da mensagem atual).
+- `app/prompts/studio_agendamento.md`:
+  - atualizado para refletir tolerancia moderada a desvios leves e retomada suave do tema do estudio.
+- documentacao:
+  - `.env.example` atualizado com novos defaults (`LLM_TEMPERATURE=0.25`, `LLM_CONTEXT_MESSAGES=5`, `LLM_OFFTOPIC_TOLERANCE_TURNS=2`).
+  - `README.md` atualizado com nova variavel e comportamento de contexto/tolerancia.
+- testes adicionados:
+  - `tests/test_contact_memory_service.py`
+  - `tests/test_llm_reply_service.py`
+
+Validacao planejada desta rodada:
+- `python -m compileall app tests`
+- `python -m pytest tests`
+
+## Registro de task - 2026-04-15 (diretrizes FC VIP: Agente FC VIP - versao definitiva)
+
+Task executada: atualizar a base de atendimento do agente FC VIP conforme novas diretrizes operacionais (tom formal, regras de link, gatilhos de risco e despedida obrigatoria).
+
+Entregas aplicadas:
+- `app/prompts/studio_agendamento.md` atualizado com:
+  - regras estritas (link apenas em cenarios permitidos);
+  - gatilhos de risco para transferencia imediata ao humano;
+  - informacoes de capacidade, acesso, estacionamento, atrasos e audio;
+  - lista completa de equipamentos inclusos;
+  - fluxo para cliente novo/antigo e agendamento;
+  - despedida obrigatoria literal.
+- `app/services/llm_reply_service.py` ajustado para:
+  - reduzir envio automatico de link (somente agendar/valores na primeira vez/tour virtual);
+  - substituir `[link do site]` pelo link oficial quando aplicavel;
+  - interceptar encerramento e responder com a frase obrigatoria;
+  - interceptar gatilhos de risco (itens que sujam/efeitos, +5 pessoas, cancelamento/reagendamento pago) e encaminhar para humano.
+
+## Registro de task - 2026-04-15 (road test: dica para invalid_meta_signature)
+
+Task executada: melhorar a mensagem de erro do script de road test quando o webhook retorna `401 Invalid Meta signature`.
+
+Entrega aplicada:
+- `road_test/chat_railway_prod.py`: quando `--app-secret` parece placeholder (ex.: `SEU_META_APP_SECRET`) ou muito curto, a excecao passa a incluir dica clara para substituir pelo App Secret real (o mesmo configurado no Railway em `META_APP_SECRET`).
+
+## Registro de task - 2026-04-15 (deploy Railway + correcao regra de risco +5 pessoas)
+
+Task executada: publicar alteracoes pendentes no Railway e corrigir bug na deteccao de "mais de 5 pessoas".
+
+Entregas:
+- Deploy realizado em producao:
+  - service `projeto-automacao` deployment `bac898cd-9427-4ed6-a34b-3ed5db74933b`
+  - service `worker` deployment `8069f181-ee2a-4307-9127-b08868bb1374`
+- Correcao em `app/services/llm_reply_service.py`:
+  - regex de captura numerica ajustado de `r"\\b(\\d{1,2})\\b"` para `r"\b(\d{1,2})\b"` em `_mentions_more_than_five_people`.
+- Validacao em producao (`road_test/chat_railway_prod.cmd --once "vamos em 6 pessoas"`):
+  - resposta passou a acionar `rule_human_handoff` com motivo `quantidade de pessoas acima do permitido`.
+
+## Registro de task - 2026-04-15 (fix de contexto: agendamento e linguagem ofensiva)
+
+Task executada: corrigir comportamento em que o LLM confirmava horario manualmente e respondia fora do papel da FC VIP em mensagens ofensivas.
+
+Implementacao:
+- `app/services/llm_reply_service.py`:
+  - nova regra `rule_schedule_site_only`: quando intencao de agendamento for detectada, responde de forma deterministica que o agendamento e feito pelo site e nao confirma horario manualmente.
+  - nova regra `rule_respect_redirect`: para linguagem ofensiva, responde com redirecionamento profissional ao escopo da FC VIP.
+  - novo detector `_contains_abusive_language(...)` com lista de marcadores ofensivos.
+
+Deploy e validacao em producao:
+- Deploy Railway realizado:
+  - `projeto-automacao` deployment `116634f7-f739-4027-b01c-54330304b8e7` (`SUCCESS`)
+  - `worker` deployment `0a1eaa8e-6a6b-495d-b7e9-d8f1b58b7a94` (`SUCCESS`)
+- Testes `--once` em producao:
+  - mensagem de agendamento retornou `llm_model=rule_schedule_site_only`, com texto sem confirmar horario e link de agendamento.
+  - mensagem ofensiva retornou `llm_model=rule_respect_redirect`, sem resposta genérica de "sou IA".

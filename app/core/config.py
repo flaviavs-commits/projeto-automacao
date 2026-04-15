@@ -57,13 +57,14 @@ class Settings(BaseSettings):
     llm_provider: str = Field(default="ollama", alias="LLM_PROVIDER")
     llm_base_url: str = Field(default="http://127.0.0.1:11434", alias="LLM_BASE_URL")
     llm_model: str = Field(default="qwen2.5:7b-instruct", alias="LLM_MODEL")
-    llm_temperature: float = Field(default=0.1, alias="LLM_TEMPERATURE")
+    llm_temperature: float = Field(default=0.25, alias="LLM_TEMPERATURE")
     llm_max_output_tokens: int = Field(default=220, alias="LLM_MAX_OUTPUT_TOKENS")
     llm_timeout_seconds: float = Field(default=90.0, alias="LLM_TIMEOUT_SECONDS")
     llm_num_ctx: int = Field(default=1024, alias="LLM_NUM_CTX")
     llm_num_thread: int = Field(default=4, alias="LLM_NUM_THREAD")
     llm_keep_alive: str = Field(default="10m", alias="LLM_KEEP_ALIVE")
-    llm_context_messages: int = Field(default=12, alias="LLM_CONTEXT_MESSAGES")
+    llm_context_messages: int = Field(default=5, alias="LLM_CONTEXT_MESSAGES")
+    llm_offtopic_tolerance_turns: int = Field(default=2, alias="LLM_OFFTOPIC_TOLERANCE_TURNS")
     llm_domain_lock: bool = Field(default=True, alias="LLM_DOMAIN_LOCK")
     llm_domain_description: str = Field(
         default="fc vip estudio fotografia video agendamento",
@@ -143,6 +144,11 @@ class Settings(BaseSettings):
     def llm_test_models_list(self) -> list[str]:
         raw_items = [item.strip() for item in self.llm_test_models.split(",")]
         return [item for item in raw_items if item]
+
+    @property
+    def llm_effective_context_messages(self) -> int:
+        desired = max(1, int(self.llm_context_messages))
+        return max(3, min(5, desired))
 
 
 @lru_cache
