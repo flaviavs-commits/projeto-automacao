@@ -1,0 +1,1154 @@
+{
+  "run_at_utc": "2026-04-16T11:44:16.373932+00:00",
+  "selection": {
+    "previous_report": ".qa_tmp\\stress_locacao_20260415_163642.json",
+    "passed_sampled": 10,
+    "failed_repeated": 23,
+    "new_cases": 10,
+    "total_selected": 43
+  },
+  "config": {
+    "base_url": "https://projeto-automacao-production.up.railway.app",
+    "reply_timeout": 90,
+    "poll_interval": 2.0
+  },
+  "summary": {
+    "total_cases": 43,
+    "passed": 11,
+    "failed": 32,
+    "pass_rate_pct": 25.581395348837212,
+    "by_category": [
+      {
+        "category": "audio",
+        "total": 11,
+        "passed": 1,
+        "failed": 10,
+        "pass_rate_pct": 9.090909090909092
+      },
+      {
+        "category": "close",
+        "total": 1,
+        "passed": 1,
+        "failed": 0,
+        "pass_rate_pct": 100.0
+      },
+      {
+        "category": "generic",
+        "total": 2,
+        "passed": 1,
+        "failed": 1,
+        "pass_rate_pct": 50.0
+      },
+      {
+        "category": "greeting",
+        "total": 1,
+        "passed": 1,
+        "failed": 0,
+        "pass_rate_pct": 100.0
+      },
+      {
+        "category": "location",
+        "total": 11,
+        "passed": 0,
+        "failed": 11,
+        "pass_rate_pct": 0.0
+      },
+      {
+        "category": "paid_changes",
+        "total": 8,
+        "passed": 1,
+        "failed": 7,
+        "pass_rate_pct": 12.5
+      },
+      {
+        "category": "prices",
+        "total": 1,
+        "passed": 1,
+        "failed": 0,
+        "pass_rate_pct": 100.0
+      },
+      {
+        "category": "risk_materials",
+        "total": 1,
+        "passed": 1,
+        "failed": 0,
+        "pass_rate_pct": 100.0
+      },
+      {
+        "category": "risk_people",
+        "total": 4,
+        "passed": 1,
+        "failed": 3,
+        "pass_rate_pct": 25.0
+      },
+      {
+        "category": "schedule",
+        "total": 1,
+        "passed": 1,
+        "failed": 0,
+        "pass_rate_pct": 100.0
+      },
+      {
+        "category": "structure",
+        "total": 2,
+        "passed": 2,
+        "failed": 0,
+        "pass_rate_pct": 100.0
+      }
+    ],
+    "top_issues": [
+      [
+        "location_missing_official_reference",
+        11
+      ],
+      [
+        "missing_handoff_text",
+        10
+      ],
+      [
+        "audio_missing_negative_constraint",
+        8
+      ],
+      [
+        "expected_model=rule_human_handoff got=rule_schedule_site_only",
+        5
+      ],
+      [
+        "expected_model=rule_human_handoff got=qwen2.5:0.5b-instruct",
+        5
+      ],
+      [
+        "audio_answer_missing_topic",
+        4
+      ],
+      [
+        "unexpected_rule_model=rule_schedule_site_only",
+        1
+      ]
+    ]
+  },
+  "results": [
+    {
+      "case": {
+        "id": "audio_1",
+        "category": "audio",
+        "text": "tem microfone de lapela?",
+        "expected": "generic_model"
+      },
+      "status": "ok",
+      "error": "",
+      "passed": false,
+      "issues": [
+        "audio_missing_negative_constraint"
+      ],
+      "result": {
+        "external_message_id": "wamid.prod.cli.20260416113932.8a53fede",
+        "inbound_message_id": "fd691baa-183c-4410-ae68-d235c169dfba",
+        "outbound_message_id": "f109ba79-1fef-4978-a43e-e5d542969a0f",
+        "reply_text": "Sim, o cliente tem um microfone de lapela. Ele usava esse dispositivo para transmitir a sua voz e a imagem ao seu estúdio durante o ensaio fotográfico",
+        "llm_status": "completed",
+        "llm_model": "qwen2.5:0.5b-instruct",
+        "dispatch_status": "request_failed",
+        "request_latency_seconds": 6.165
+      }
+    },
+    {
+      "case": {
+        "id": "close_1",
+        "category": "close",
+        "text": "obrigado, vou fechar pelo site",
+        "expected": "rule_close"
+      },
+      "status": "ok",
+      "error": "",
+      "passed": true,
+      "issues": [],
+      "result": {
+        "external_message_id": "wamid.prod.cli.20260416113938.95e01dc1",
+        "inbound_message_id": "169c4426-01d6-484d-a8b8-727334ebd90e",
+        "outbound_message_id": "e22a154c-5bfa-4a2e-a47b-10bcf59bdbe1",
+        "reply_text": "Por nada! Sempre que precisar de ajuda é só entrar em contato a FC VIP agradece seu contato",
+        "llm_status": "completed",
+        "llm_model": "rule_close",
+        "dispatch_status": "request_failed",
+        "request_latency_seconds": 3.466
+      }
+    },
+    {
+      "case": {
+        "id": "generic_1",
+        "category": "generic",
+        "text": "nunca fui ai, como funciona?",
+        "expected": "generic_model"
+      },
+      "status": "ok",
+      "error": "",
+      "passed": true,
+      "issues": [],
+      "result": {
+        "external_message_id": "wamid.prod.cli.20260416113941.2400b4bf",
+        "inbound_message_id": "3d953ea8-4c23-4e0f-9548-80d5c22802c1",
+        "outbound_message_id": "1cda9375-5ac2-47c1-b743-ea0fe6fceaba",
+        "reply_text": "Desculpe se a confusão foi causada. Como sou um assistente de inteligência artificial, eu não tenho experiências pessoais ou conhecimento sobre o que aconteceu anteriormente. No entanto, posso te ajudar a entender melhor o que aconteceu: 1. O cliente perguntou para agendar uma sessão de ensaio fotográfico. 2. Ele disse que queria agendar a sessão no sábado (sab",
+        "llm_status": "completed",
+        "llm_model": "qwen2.5:0.5b-instruct",
+        "dispatch_status": "request_failed",
+        "request_latency_seconds": 5.889
+      }
+    },
+    {
+      "case": {
+        "id": "greet_1",
+        "category": "greeting",
+        "text": "oi",
+        "expected": "generic_model"
+      },
+      "status": "ok",
+      "error": "",
+      "passed": true,
+      "issues": [],
+      "result": {
+        "external_message_id": "wamid.prod.cli.20260416113947.b8a76e8b",
+        "inbound_message_id": "0ef188ee-4545-4c06-99bf-8f21038e3f2c",
+        "outbound_message_id": "526e493f-9950-4de4-b953-9cefffda6448",
+        "reply_text": "Olá! Como posso ajudar você hoje?",
+        "llm_status": "completed",
+        "llm_model": "qwen2.5:1.5b-instruct",
+        "dispatch_status": "request_failed",
+        "request_latency_seconds": 14.964
+      }
+    },
+    {
+      "case": {
+        "id": "paid_change_1",
+        "category": "paid_changes",
+        "text": "preciso cancelar um horario que ja paguei",
+        "expected": "rule_handoff"
+      },
+      "status": "ok",
+      "error": "",
+      "passed": true,
+      "issues": [],
+      "result": {
+        "external_message_id": "wamid.prod.cli.20260416114002.6c3822eb",
+        "inbound_message_id": "4583d1e6-e4c8-4ecf-9306-e48c6963b382",
+        "outbound_message_id": "a38057b3-f17b-4a30-917f-c68dbbaa52e7",
+        "reply_text": "Entendi sua solicitacao. Para esse tipo de caso, preciso encaminhar para a nossa equipe humana para avaliacao e confirmacao. Motivo: cancelamento/reagendamento de horario ja pago.",
+        "llm_status": "completed",
+        "llm_model": "rule_human_handoff",
+        "dispatch_status": "request_failed",
+        "request_latency_seconds": 0.938
+      }
+    },
+    {
+      "case": {
+        "id": "price_10",
+        "category": "prices",
+        "text": "me manda os valores",
+        "expected": "generic_model"
+      },
+      "status": "ok",
+      "error": "",
+      "passed": true,
+      "issues": [],
+      "result": {
+        "external_message_id": "wamid.prod.cli.20260416114003.f8b0fc2d",
+        "inbound_message_id": "990fde84-b08c-45f8-aa14-9fab81933cc0",
+        "outbound_message_id": "511f5bfe-ec0f-4623-bd8f-03925c348b55",
+        "reply_text": "Desculpe pela confusão, mas como um assistente de inteligência artificial, eu não tenho a capacidade de fornecer informações financeiras ou valores. No entanto, você pode entrar em contato com a FC VIP através do site para obter mais detalhes sobre o valor dos serviços e as condições específicas do seu pedido.\n\nPacotes e valores no site: https://www.fcvip.com.br/formulario",
+        "llm_status": "completed",
+        "llm_model": "qwen2.5:1.5b-instruct",
+        "dispatch_status": "request_failed",
+        "request_latency_seconds": 18.587
+      }
+    },
+    {
+      "case": {
+        "id": "risk_materials_1",
+        "category": "risk_materials",
+        "text": "queremos usar confete no ensaio",
+        "expected": "rule_handoff"
+      },
+      "status": "ok",
+      "error": "",
+      "passed": true,
+      "issues": [],
+      "result": {
+        "external_message_id": "wamid.prod.cli.20260416114022.76649855",
+        "inbound_message_id": "cd5de97c-8a3b-4ebb-9642-12d0a6db11e3",
+        "outbound_message_id": "2075eb4e-dc15-44ef-a19f-140d1aa0aeaf",
+        "reply_text": "Entendi sua solicitacao. Para esse tipo de caso, preciso encaminhar para a nossa equipe humana para avaliacao e confirmacao. Motivo: uso de itens/efeitos que exigem avaliacao (ex.: sujeira, liquidos, fumaca, glitter, fogo ou animais).",
+        "llm_status": "completed",
+        "llm_model": "rule_human_handoff",
+        "dispatch_status": "request_failed",
+        "request_latency_seconds": 0.728
+      }
+    },
+    {
+      "case": {
+        "id": "risk_people_1",
+        "category": "risk_people",
+        "text": "vamos em 6 pessoas para gravar",
+        "expected": "rule_handoff"
+      },
+      "status": "ok",
+      "error": "",
+      "passed": true,
+      "issues": [],
+      "result": {
+        "external_message_id": "wamid.prod.cli.20260416114022.c556bf6c",
+        "inbound_message_id": "d2b41bdb-fef5-410e-945e-b190b4f43cdc",
+        "outbound_message_id": "e63e5fbc-d2e4-4dcb-9e53-2a6c72503c26",
+        "reply_text": "Entendi sua solicitacao. Para esse tipo de caso, preciso encaminhar para a nossa equipe humana para avaliacao e confirmacao. Motivo: quantidade de pessoas acima do permitido.",
+        "llm_status": "completed",
+        "llm_model": "rule_human_handoff",
+        "dispatch_status": "request_failed",
+        "request_latency_seconds": 3.586
+      }
+    },
+    {
+      "case": {
+        "id": "schedule_1",
+        "category": "schedule",
+        "text": "quero agendar sexta as 18h",
+        "expected": "rule_schedule"
+      },
+      "status": "ok",
+      "error": "",
+      "passed": true,
+      "issues": [],
+      "result": {
+        "external_message_id": "wamid.prod.cli.20260416114026.a5c7ba59",
+        "inbound_message_id": "09dae737-aa44-41e7-863d-4dff7e4db63b",
+        "outbound_message_id": "2ffef938-68d7-4a05-9c69-561733900b18",
+        "reply_text": "O agendamento e feito totalmente pelo nosso site, mas ele e super intuitivo, tenho certeza que voce conseguira agendar de forma facil e simples! Nao consigo confirmar horario manualmente por aqui.\n\nAgendamento pelo site: https://www.fcvip.com.br/formulario",
+        "llm_status": "completed",
+        "llm_model": "rule_schedule_site_only",
+        "dispatch_status": "request_failed",
+        "request_latency_seconds": 3.181
+      }
+    },
+    {
+      "case": {
+        "id": "struct_1",
+        "category": "structure",
+        "text": "qual estrutura de iluminacao voces tem?",
+        "expected": "generic_model"
+      },
+      "status": "ok",
+      "error": "",
+      "passed": true,
+      "issues": [],
+      "result": {
+        "external_message_id": "wamid.prod.cli.20260416114029.01588cdc",
+        "inbound_message_id": "44f4cc10-5cb0-4846-9ea0-5467e0d22461",
+        "outbound_message_id": "96745ce2-bf05-4b1f-b310-2fa28eaf3659",
+        "reply_text": "As informações fornecidas não especificam a estrutura de iluminação que você está se referindo. Elas podem ser sobre o estacionamento, as luzes do local ou qualquer outra coisa. Para obter essa informação precisa ter mais contexto ou detalhes específicos sobre o ambiente e o local em que está se referindo",
+        "llm_status": "completed",
+        "llm_model": "qwen2.5:0.5b-instruct",
+        "dispatch_status": "request_failed",
+        "request_latency_seconds": 7.812
+      }
+    },
+    {
+      "case": {
+        "id": "loc_7",
+        "category": "location",
+        "text": "da para parar carro perto?",
+        "expected": "generic_model"
+      },
+      "status": "ok",
+      "error": "",
+      "passed": false,
+      "issues": [
+        "location_missing_official_reference"
+      ],
+      "result": {
+        "external_message_id": "wamid.prod.cli.20260416114037.baaf7280",
+        "inbound_message_id": "fd1aacfc-2aee-4b81-93b8-3a956fc0d674",
+        "outbound_message_id": "3727ce40-b61a-4ea8-97f3-48c1ce6746f7",
+        "reply_text": "Desculpe, mas como um assistente de inteligência artificial, não tenho a capacidade de fornecer informações sobre o local do estúdio. Você pode entrar em contato com a FC VIP através do site para obter essas informações",
+        "llm_status": "completed",
+        "llm_model": "qwen2.5:1.5b-instruct",
+        "dispatch_status": "request_failed",
+        "request_latency_seconds": 16.821
+      }
+    },
+    {
+      "case": {
+        "id": "loc_4",
+        "category": "location",
+        "text": "como chego ai?",
+        "expected": "generic_model"
+      },
+      "status": "ok",
+      "error": "",
+      "passed": false,
+      "issues": [
+        "location_missing_official_reference"
+      ],
+      "result": {
+        "external_message_id": "wamid.prod.cli.20260416114054.8e3ccfcf",
+        "inbound_message_id": "8152608b-d850-4b61-8718-07b1b3239d72",
+        "outbound_message_id": "5764b78d-400c-488a-ba02-f2d568be18cc",
+        "reply_text": "Para chegar a você, eu posso te ajudar a localizar seu endereço. No entanto, não tenho informações específicas sobre sua cidade ou região. Você pode me fornecer o nome da cidade ou o estado e eu farei o melhor possível para encontrar seu endereço. Se você tiver mais detalhes sobre sua situação atual ou quaisquer outras informações que você possa fornecer, ficarei feliz em tentar ajudá-lo de forma",
+        "llm_status": "completed",
+        "llm_model": "qwen2.5:0.5b-instruct",
+        "dispatch_status": "request_failed",
+        "request_latency_seconds": 7.743
+      }
+    },
+    {
+      "case": {
+        "id": "loc_3",
+        "category": "location",
+        "text": "fica em qual bairro?",
+        "expected": "generic_model"
+      },
+      "status": "ok",
+      "error": "",
+      "passed": false,
+      "issues": [
+        "location_missing_official_reference"
+      ],
+      "result": {
+        "external_message_id": "wamid.prod.cli.20260416114101.7c4e6e43",
+        "inbound_message_id": "6febed7c-c45a-4a54-9076-a25ba8bcdc84",
+        "outbound_message_id": "5358d6e4-f746-46f3-adb6-222e0c05855d",
+        "reply_text": "Desculpe, mas como sou um assistente de inteligência artificial, não tenho acesso a informações sobre o local específico do estúdio. Você pode entrar em contato com a FC VIP para obter essa informação",
+        "llm_status": "completed",
+        "llm_model": "qwen2.5:1.5b-instruct",
+        "dispatch_status": "request_failed",
+        "request_latency_seconds": 16.795
+      }
+    },
+    {
+      "case": {
+        "id": "loc_5",
+        "category": "location",
+        "text": "o acesso e por escada?",
+        "expected": "generic_model"
+      },
+      "status": "ok",
+      "error": "",
+      "passed": false,
+      "issues": [
+        "location_missing_official_reference"
+      ],
+      "result": {
+        "external_message_id": "wamid.prod.cli.20260416114118.93fc73ba",
+        "inbound_message_id": "d0c3fbf0-8212-4442-9cc8-9b6a1c83093d",
+        "outbound_message_id": "d63977d1-f71e-48fe-b1f4-800598f7dc1b",
+        "reply_text": "O acesso ao estacionamento é feito na propria rua, e a luzes são iluminadas pela própria equipe do estabelecimento. Não há necessidade de usar um escudo ou acessar o local através de uma escada",
+        "llm_status": "completed",
+        "llm_model": "qwen2.5:0.5b-instruct",
+        "dispatch_status": "request_failed",
+        "request_latency_seconds": 5.654
+      }
+    },
+    {
+      "case": {
+        "id": "paid_change_3",
+        "category": "paid_changes",
+        "text": "ja paguei e quero trocar o horario",
+        "expected": "rule_handoff"
+      },
+      "status": "ok",
+      "error": "",
+      "passed": false,
+      "issues": [
+        "expected_model=rule_human_handoff got=rule_schedule_site_only",
+        "missing_handoff_text"
+      ],
+      "result": {
+        "external_message_id": "wamid.prod.cli.20260416114124.39dfb6a2",
+        "inbound_message_id": "f7e90c7b-ab27-4d66-ab8c-64a1bc44445a",
+        "outbound_message_id": "8155bc21-3cb1-4f7e-afee-dd426f9ed669",
+        "reply_text": "O agendamento e feito totalmente pelo nosso site, mas ele e super intuitivo, tenho certeza que voce conseguira agendar de forma facil e simples! Nao consigo confirmar horario manualmente por aqui.\n\nAgendamento pelo site: https://www.fcvip.com.br/formulario",
+        "llm_status": "completed",
+        "llm_model": "rule_schedule_site_only",
+        "dispatch_status": "request_failed",
+        "request_latency_seconds": 0.535
+      }
+    },
+    {
+      "case": {
+        "id": "loc_1",
+        "category": "location",
+        "text": "onde fica o estudio?",
+        "expected": "generic_model"
+      },
+      "status": "ok",
+      "error": "",
+      "passed": false,
+      "issues": [
+        "location_missing_official_reference"
+      ],
+      "result": {
+        "external_message_id": "wamid.prod.cli.20260416114124.d6c05cf5",
+        "inbound_message_id": "d13cb0e9-af13-4eb1-953d-a60517a71cd4",
+        "outbound_message_id": "5c88c134-d10c-47ca-8ce0-0cae0f9862e6",
+        "reply_text": "O estúdio da FC VIP está localizado na rua 10, no bairro Jardim América, em São Paulo. Você pode acessar o local através de um mapa ou GPS. Se você precisar de mais informações sobre a localização, como horários ou acesso, recomendo que visite a página oficial do estúdio: [www.fcvip.com.br](http://www.fcvip.com.br)",
+        "llm_status": "completed",
+        "llm_model": "qwen2.5:0.5b-instruct",
+        "dispatch_status": "request_failed",
+        "request_latency_seconds": 7.348
+      }
+    },
+    {
+      "case": {
+        "id": "paid_change_9",
+        "category": "paid_changes",
+        "text": "consigo trocar data apos pagamento?",
+        "expected": "rule_handoff"
+      },
+      "status": "ok",
+      "error": "",
+      "passed": false,
+      "issues": [
+        "expected_model=rule_human_handoff got=rule_schedule_site_only",
+        "missing_handoff_text"
+      ],
+      "result": {
+        "external_message_id": "wamid.prod.cli.20260416114132.75c38aba",
+        "inbound_message_id": "20fa1ece-eb77-4639-9974-a71d5be9dd35",
+        "outbound_message_id": "8a01efdb-cacc-4c86-b68e-318c3ae95033",
+        "reply_text": "O agendamento e feito totalmente pelo nosso site, mas ele e super intuitivo, tenho certeza que voce conseguira agendar de forma facil e simples! Nao consigo confirmar horario manualmente por aqui.\n\nAgendamento pelo site: https://www.fcvip.com.br/formulario",
+        "llm_status": "completed",
+        "llm_model": "rule_schedule_site_only",
+        "dispatch_status": "request_failed",
+        "request_latency_seconds": 0.538
+      }
+    },
+    {
+      "case": {
+        "id": "audio_9",
+        "category": "audio",
+        "text": "fornecem microfones?",
+        "expected": "generic_model"
+      },
+      "status": "ok",
+      "error": "",
+      "passed": false,
+      "issues": [
+        "audio_missing_negative_constraint"
+      ],
+      "result": {
+        "external_message_id": "wamid.prod.cli.20260416114132.36d26840",
+        "inbound_message_id": "42649b29-f65a-442a-99f9-b93310114025",
+        "outbound_message_id": "2ce171f5-43e0-4ad9-98a1-4b3b17524e92",
+        "reply_text": "Sim, o fornecedor oferece microfones. Ele usa um microfone para a comunicação e também para o ensaio de fotos. Isso pode ser útil se você quiser que os outros usuários ou assistentes estejam ao seu alcance durante o processo de ensaio",
+        "llm_status": "completed",
+        "llm_model": "qwen2.5:0.5b-instruct",
+        "dispatch_status": "request_failed",
+        "request_latency_seconds": 5.472
+      }
+    },
+    {
+      "case": {
+        "id": "audio_10",
+        "category": "audio",
+        "text": "audio esta incluso?",
+        "expected": "generic_model"
+      },
+      "status": "ok",
+      "error": "",
+      "passed": false,
+      "issues": [
+        "audio_missing_negative_constraint"
+      ],
+      "result": {
+        "external_message_id": "wamid.prod.cli.20260416114138.55a632d0",
+        "inbound_message_id": "cb36b76c-d51f-40ad-a191-6cb388c76450",
+        "outbound_message_id": "c5110783-34ec-4f26-a876-8a325564e5d3",
+        "reply_text": "Sim, o audio está incluído no texto. Você pode ouvir a conversa abaixo: \"Obrigado por compartilhar seu pedido. Vou encaminhar seu caso para o time comercial. Para iniciar os dados do pedido, acesse: /formulario.\"",
+        "llm_status": "completed",
+        "llm_model": "qwen2.5:0.5b-instruct",
+        "dispatch_status": "request_failed",
+        "request_latency_seconds": 5.472
+      }
+    },
+    {
+      "case": {
+        "id": "audio_4",
+        "category": "audio",
+        "text": "tem mesa de som ai?",
+        "expected": "generic_model"
+      },
+      "status": "ok",
+      "error": "",
+      "passed": false,
+      "issues": [
+        "audio_answer_missing_topic",
+        "audio_missing_negative_constraint"
+      ],
+      "result": {
+        "external_message_id": "wamid.prod.cli.20260416114143.319dfabf",
+        "inbound_message_id": "10cb953e-5008-4616-b0cf-d9c4ac296268",
+        "outbound_message_id": "68665c50-c86b-441e-a49c-3e9bdee5a184",
+        "reply_text": "Sim, o cliente está disposto a receber um espaço para a sua mesa de som. Ele pediu que acesse o site e selecione \" /formulario\" para iniciar os dados do pedido. Isso significa que ele pode escolher onde ficar a mesa de som, como se fosse uma sala ou um local específico na propria casa",
+        "llm_status": "completed",
+        "llm_model": "qwen2.5:0.5b-instruct",
+        "dispatch_status": "request_failed",
+        "request_latency_seconds": 5.27
+      }
+    },
+    {
+      "case": {
+        "id": "loc_10",
+        "category": "location",
+        "text": "fica na rua ou em shopping?",
+        "expected": "generic_model"
+      },
+      "status": "ok",
+      "error": "",
+      "passed": false,
+      "issues": [
+        "location_missing_official_reference"
+      ],
+      "result": {
+        "external_message_id": "wamid.prod.cli.20260416114149.85ad2883",
+        "inbound_message_id": "483dde99-1c0c-41f1-805a-6ac6ac01a85b",
+        "outbound_message_id": "6f8f17e6-7503-4048-a670-81ef756146ef",
+        "reply_text": "O cliente está sugerindo que o estacionamento seja feito na propria rua, mas não especifica se ele é em um shopping ou outra área. No entanto, a resposta parece ser que ele está procurando por uma estrutura de transporte adequada para a sua visita ao local. Se você tiver mais informações sobre a região ou o tipo de estacionamento disponível, poderia me ajudar a fornecer mais detalhes?",
+        "llm_status": "completed",
+        "llm_model": "qwen2.5:0.5b-instruct",
+        "dispatch_status": "request_failed",
+        "request_latency_seconds": 5.07
+      }
+    },
+    {
+      "case": {
+        "id": "audio_6",
+        "category": "audio",
+        "text": "vocês oferecem audio?",
+        "expected": "generic_model"
+      },
+      "status": "ok",
+      "error": "",
+      "passed": true,
+      "issues": [],
+      "result": {
+        "external_message_id": "wamid.prod.cli.20260416114154.d2a8686b",
+        "inbound_message_id": "6c909bfe-ebb0-4cc0-8c4a-c2f509d772a0",
+        "outbound_message_id": "4213ce5c-779f-4df9-bab7-cf86be944b73",
+        "reply_text": "Sim, nós oferecemos a possibilidade de usar o audio ao longo do serviço. Você pode escolher se deseja ou não ter voz ao vivo durante o processo de encontro e aquisição de serviços",
+        "llm_status": "completed",
+        "llm_model": "qwen2.5:0.5b-instruct",
+        "dispatch_status": "request_failed",
+        "request_latency_seconds": 5.259
+      }
+    },
+    {
+      "case": {
+        "id": "audio_5",
+        "category": "audio",
+        "text": "da pra gravar com lapela de voces?",
+        "expected": "generic_model"
+      },
+      "status": "ok",
+      "error": "",
+      "passed": false,
+      "issues": [
+        "audio_missing_negative_constraint"
+      ],
+      "result": {
+        "external_message_id": "wamid.prod.cli.20260416114159.9bc96643",
+        "inbound_message_id": "c11ffe12-9fff-4bdf-bad6-27eb112d95f0",
+        "outbound_message_id": "9660b55c-231c-4a40-8511-a421a8c313e0",
+        "reply_text": "Sim, você pode gravar com lapelas de voces. Apenas precisa ter um microfone adequado e a música que deseja usar para o seu trabalho. O microfone deve ser suficiente para capturar as vozes e os sons da música. Se você estiver usando uma lapela de vósso próprio, é só colocar o microfone no microfone e a música na lapela",
+        "llm_status": "completed",
+        "llm_model": "qwen2.5:0.5b-instruct",
+        "dispatch_status": "request_failed",
+        "request_latency_seconds": 7.746
+      }
+    },
+    {
+      "case": {
+        "id": "audio_8",
+        "category": "audio",
+        "text": "tem interface de audio?",
+        "expected": "generic_model"
+      },
+      "status": "ok",
+      "error": "",
+      "passed": false,
+      "issues": [
+        "audio_missing_negative_constraint"
+      ],
+      "result": {
+        "external_message_id": "wamid.prod.cli.20260416114207.7227af10",
+        "inbound_message_id": "dd667f7d-f3ed-4193-9de6-dc35738c878a",
+        "outbound_message_id": "7c90ed8f-1991-49ef-8b97-ab4703d10b29",
+        "reply_text": "Sim, o cliente tem a opção de usar um microfone para transmitir suas informações ao agente. Ele pode escolher entre \"escuta\" (para escutar as conversas) e \"sala\" (para se sentar na sala do estacionamento). O agente também oferece suporte ao cliente, como o acesso à rua e a iluminação",
+        "llm_status": "completed",
+        "llm_model": "qwen2.5:0.5b-instruct",
+        "dispatch_status": "request_failed",
+        "request_latency_seconds": 5.475
+      }
+    },
+    {
+      "case": {
+        "id": "audio_7",
+        "category": "audio",
+        "text": "tem boom ou shotgun?",
+        "expected": "generic_model"
+      },
+      "status": "ok",
+      "error": "",
+      "passed": false,
+      "issues": [
+        "audio_answer_missing_topic"
+      ],
+      "result": {
+        "external_message_id": "wamid.prod.cli.20260416114212.9a30e033",
+        "inbound_message_id": "6ceb3513-c93d-4845-b9b4-f40b7f300a1e",
+        "outbound_message_id": "9efa1093-51da-4635-9d75-f0a5e7dde925",
+        "reply_text": "Desculpe, mas não tenho informações específicas sobre o tipo de arma que você está se referindo. Boa sorte com seu projeto!",
+        "llm_status": "completed",
+        "llm_model": "qwen2.5:0.5b-instruct",
+        "dispatch_status": "request_failed",
+        "request_latency_seconds": 5.08
+      }
+    },
+    {
+      "case": {
+        "id": "loc_9",
+        "category": "location",
+        "text": "tem elevador?",
+        "expected": "generic_model"
+      },
+      "status": "ok",
+      "error": "",
+      "passed": false,
+      "issues": [
+        "location_missing_official_reference"
+      ],
+      "result": {
+        "external_message_id": "wamid.prod.cli.20260416114217.301b6daa",
+        "inbound_message_id": "3ae4911a-13f3-4a2e-84f5-fc2ab5658b8b",
+        "outbound_message_id": "2ff4a73c-9a62-4d68-b256-951c1d2b61c2",
+        "reply_text": "Sim, o cliente mencionou que tem um elevador na propria rua. Ele pediu para entrar em contato a FC VIP com o link para a formatação do pedido",
+        "llm_status": "completed",
+        "llm_model": "qwen2.5:0.5b-instruct",
+        "dispatch_status": "request_failed",
+        "request_latency_seconds": 5.084
+      }
+    },
+    {
+      "case": {
+        "id": "audio_3",
+        "category": "audio",
+        "text": "tem equipamento de audio?",
+        "expected": "generic_model"
+      },
+      "status": "ok",
+      "error": "",
+      "passed": false,
+      "issues": [
+        "audio_answer_missing_topic"
+      ],
+      "result": {
+        "external_message_id": "wamid.prod.cli.20260416114222.1e52e419",
+        "inbound_message_id": "137fe313-38f9-4201-b7de-f75266b48853",
+        "outbound_message_id": "464d057d-b1d0-4c59-b42b-fb21113c601b",
+        "reply_text": "Sim, o cliente tem um equipamento de áudio. Ele menciona que ele \"vai fechar pelo site!\" e que a empresa oferece suporte ao cliente através do site. No entanto, não há informações específicas sobre se ele possui ou não um equipamento de áudio para o serviço de ensaio fotográfico",
+        "llm_status": "completed",
+        "llm_model": "qwen2.5:0.5b-instruct",
+        "dispatch_status": "request_failed",
+        "request_latency_seconds": 5.248
+      }
+    },
+    {
+      "case": {
+        "id": "paid_change_6",
+        "category": "paid_changes",
+        "text": "ja esta pago, posso mudar o dia?",
+        "expected": "rule_handoff"
+      },
+      "status": "ok",
+      "error": "",
+      "passed": false,
+      "issues": [
+        "expected_model=rule_human_handoff got=qwen2.5:0.5b-instruct",
+        "missing_handoff_text"
+      ],
+      "result": {
+        "external_message_id": "wamid.prod.cli.20260416114228.6362555b",
+        "inbound_message_id": "ba1da409-ca76-42f7-9691-711d62e0e053",
+        "outbound_message_id": "b5b95665-5691-4008-8f7f-8556480a0da1",
+        "reply_text": "Sim, você pode alterar o horário do serviço. No momento, o horário sugerido é 18h. Se você quiser mudar para outro horário, por favor, informe e eu farei a solicitação",
+        "llm_status": "completed",
+        "llm_model": "qwen2.5:0.5b-instruct",
+        "dispatch_status": "request_failed",
+        "request_latency_seconds": 5.66
+      }
+    },
+    {
+      "case": {
+        "id": "paid_change_8",
+        "category": "paid_changes",
+        "text": "preciso reagendar reserva paga",
+        "expected": "rule_handoff"
+      },
+      "status": "ok",
+      "error": "",
+      "passed": false,
+      "issues": [
+        "expected_model=rule_human_handoff got=rule_schedule_site_only",
+        "missing_handoff_text"
+      ],
+      "result": {
+        "external_message_id": "wamid.prod.cli.20260416114233.d27dac05",
+        "inbound_message_id": "0c8251d6-f031-4931-b3b6-4d2b7fed231c",
+        "outbound_message_id": "8042b8ee-b6d3-4cf0-8a44-e65e91395dad",
+        "reply_text": "O agendamento e feito totalmente pelo nosso site, mas ele e super intuitivo, tenho certeza que voce conseguira agendar de forma facil e simples! Nao consigo confirmar horario manualmente por aqui.\n\nAgendamento pelo site: https://www.fcvip.com.br/formulario",
+        "llm_status": "completed",
+        "llm_model": "rule_schedule_site_only",
+        "dispatch_status": "request_failed",
+        "request_latency_seconds": 0.536
+      }
+    },
+    {
+      "case": {
+        "id": "paid_change_10",
+        "category": "paid_changes",
+        "text": "posso cancelar depois de pagar?",
+        "expected": "rule_handoff"
+      },
+      "status": "ok",
+      "error": "",
+      "passed": false,
+      "issues": [
+        "expected_model=rule_human_handoff got=qwen2.5:0.5b-instruct",
+        "missing_handoff_text"
+      ],
+      "result": {
+        "external_message_id": "wamid.prod.cli.20260416114234.9e83d166",
+        "inbound_message_id": "f8f77609-b4ed-4bb2-9665-7428b0a96175",
+        "outbound_message_id": "f74525ce-1817-4c95-a118-3459ea6c9fe0",
+        "reply_text": "Não, a empresa não permite que o cliente cancelasse seu pedido após ter pago. O atendimento é feito em tempo real e o pagamento é o único meio para confirmar a entrega do serviço. Se você tiver interesse em agendar mais serviços ou fazer compras, recomendo que continue usando o site da FC VIP para encontrar os melhores preços e informações sobre seus serviços",
+        "llm_status": "completed",
+        "llm_model": "qwen2.5:0.5b-instruct",
+        "dispatch_status": "request_failed",
+        "request_latency_seconds": 5.092
+      }
+    },
+    {
+      "case": {
+        "id": "risk_people_9",
+        "category": "risk_people",
+        "text": "somos 6, consegue liberar?",
+        "expected": "rule_handoff"
+      },
+      "status": "ok",
+      "error": "",
+      "passed": false,
+      "issues": [
+        "expected_model=rule_human_handoff got=qwen2.5:0.5b-instruct",
+        "missing_handoff_text"
+      ],
+      "result": {
+        "external_message_id": "wamid.prod.cli.20260416114239.0aae8d92",
+        "inbound_message_id": "7e8eb0fa-7bc0-4e09-90f8-60de4cb48e2e",
+        "outbound_message_id": "aad7a581-f313-4e27-9d97-87c8cac7338e",
+        "reply_text": "Sim, posso liberá-lo. O cliente está solicitando um agendamento para o dia 18h, com a disponibilidade de 6 pessoas e o tempo necessário (2 horas). Ele também pediu que tenha espaço no espaco do estúdio. Como ele não mencionou se já tem algum espaço disponível, posso sugerir que possamos liberar um espaço adequado para o agendamento. Se você tiver mais detalhes",
+        "llm_status": "completed",
+        "llm_model": "qwen2.5:0.5b-instruct",
+        "dispatch_status": "request_failed",
+        "request_latency_seconds": 5.088
+      }
+    },
+    {
+      "case": {
+        "id": "loc_8",
+        "category": "location",
+        "text": "o local e de facil acesso?",
+        "expected": "generic_model"
+      },
+      "status": "ok",
+      "error": "",
+      "passed": false,
+      "issues": [
+        "location_missing_official_reference"
+      ],
+      "result": {
+        "external_message_id": "wamid.prod.cli.20260416114244.522e895b",
+        "inbound_message_id": "1963184c-393b-43f2-b314-3cc69a0ee740",
+        "outbound_message_id": "667f3fec-9800-43f2-a863-309e85980543",
+        "reply_text": "O local do estabelecimento é a propriedade que está na rua em frente ao local, o que significa que ele fica próximo à área onde você irá fazer o encontro. O espaço para a sua presença também será bem aberto, o que pode ser útil se você quiser que os outros visitantes possam passar por ali quando estiverem no local",
+        "llm_status": "completed",
+        "llm_model": "qwen2.5:0.5b-instruct",
+        "dispatch_status": "request_failed",
+        "request_latency_seconds": 5.065
+      }
+    },
+    {
+      "case": {
+        "id": "loc_6",
+        "category": "location",
+        "text": "tem estacionamento?",
+        "expected": "generic_model"
+      },
+      "status": "ok",
+      "error": "",
+      "passed": false,
+      "issues": [
+        "location_missing_official_reference"
+      ],
+      "result": {
+        "external_message_id": "wamid.prod.cli.20260416114249.c21e87f6",
+        "inbound_message_id": "3d624662-9a18-4457-b445-66fcb1fbf673",
+        "outbound_message_id": "ea774ba5-1135-4e75-ba4a-e27f9c451f7c",
+        "reply_text": "Não, o estacionamento é realizado na propriedade da empresa. O acesso ao local é feito por escadas",
+        "llm_status": "completed",
+        "llm_model": "qwen2.5:1.5b-instruct",
+        "dispatch_status": "request_failed",
+        "request_latency_seconds": 14.677
+      }
+    },
+    {
+      "case": {
+        "id": "new_paid_change_1",
+        "category": "paid_changes",
+        "text": "paguei a reserva e preciso alterar a data para semana que vem",
+        "expected": "rule_handoff"
+      },
+      "status": "ok",
+      "error": "",
+      "passed": false,
+      "issues": [
+        "expected_model=rule_human_handoff got=rule_schedule_site_only",
+        "missing_handoff_text"
+      ],
+      "result": {
+        "external_message_id": "wamid.prod.cli.20260416114304.04b17d19",
+        "inbound_message_id": "113aa1d2-e2ab-4425-86ff-aacfd4f035dd",
+        "outbound_message_id": "f62a2227-99a5-481f-8c48-60a4238389f2",
+        "reply_text": "O agendamento e feito totalmente pelo nosso site, mas ele e super intuitivo, tenho certeza que voce conseguira agendar de forma facil e simples! Nao consigo confirmar horario manualmente por aqui.\n\nAgendamento pelo site: https://www.fcvip.com.br/formulario",
+        "llm_status": "completed",
+        "llm_model": "rule_schedule_site_only",
+        "dispatch_status": "request_failed",
+        "request_latency_seconds": 0.538
+      }
+    },
+    {
+      "case": {
+        "id": "new_paid_change_2",
+        "category": "paid_changes",
+        "text": "quero trocar o horario de uma reserva ja paga",
+        "expected": "rule_handoff"
+      },
+      "status": "ok",
+      "error": "",
+      "passed": false,
+      "issues": [
+        "expected_model=rule_human_handoff got=rule_schedule_site_only",
+        "missing_handoff_text"
+      ],
+      "result": {
+        "external_message_id": "wamid.prod.cli.20260416114304.e9e55172",
+        "inbound_message_id": "d1e31664-a261-404d-a150-0fc830b08c4e",
+        "outbound_message_id": "6b986e43-5c73-4a9f-acd5-5a445239a14d",
+        "reply_text": "O agendamento e feito totalmente pelo nosso site, mas ele e super intuitivo, tenho certeza que voce conseguira agendar de forma facil e simples! Nao consigo confirmar horario manualmente por aqui.\n\nAgendamento pelo site: https://www.fcvip.com.br/formulario",
+        "llm_status": "completed",
+        "llm_model": "rule_schedule_site_only",
+        "dispatch_status": "request_failed",
+        "request_latency_seconds": 0.545
+      }
+    },
+    {
+      "case": {
+        "id": "new_risk_people_1",
+        "category": "risk_people",
+        "text": "somos 11 para gravar um clipe, pode liberar?",
+        "expected": "rule_handoff"
+      },
+      "status": "ok",
+      "error": "",
+      "passed": false,
+      "issues": [
+        "expected_model=rule_human_handoff got=qwen2.5:0.5b-instruct",
+        "missing_handoff_text"
+      ],
+      "result": {
+        "external_message_id": "wamid.prod.cli.20260416114305.b19a96be",
+        "inbound_message_id": "b0d062fb-20b9-4260-a9ef-921703ab5d62",
+        "outbound_message_id": "52739cc2-873e-429e-8adf-894fd76fe48e",
+        "reply_text": "Sim, podemos liberar o espaço. O número de pessoas é 6 e a quantidade de tempo disponível é 2 horas. Isso significa que você terá 4 horas livre para o seu trabalho. Se você tiver mais informações sobre o que deseja fazer ou se precisar de ajuda com algo específico, ficarei feliz em ajudar!",
+        "llm_status": "completed",
+        "llm_model": "qwen2.5:0.5b-instruct",
+        "dispatch_status": "request_failed",
+        "request_latency_seconds": 7.338
+      }
+    },
+    {
+      "case": {
+        "id": "new_risk_people_2",
+        "category": "risk_people",
+        "text": "grupo com 6 integrantes para ensaio",
+        "expected": "rule_handoff"
+      },
+      "status": "ok",
+      "error": "",
+      "passed": false,
+      "issues": [
+        "expected_model=rule_human_handoff got=qwen2.5:0.5b-instruct",
+        "missing_handoff_text"
+      ],
+      "result": {
+        "external_message_id": "wamid.prod.cli.20260416114312.60fdd2bf",
+        "inbound_message_id": "68e9a200-baf1-412a-a787-6e3cb5933c35",
+        "outbound_message_id": "66b757e1-bea4-4f8e-a806-6a6fb29ef999",
+        "reply_text": "Para criar um grupo de 6 integrantes para o ensaio, você pode seguir os seguintes passos: 1. **Defina os Níveis e Roles**: Cada integrante deve ter um nível ou um cargo específico. 2. **Concentre-se na Composição**: O grupo deve ser formado por pessoas com diferentes habilidades e experiências. 3. **Seleciona os Integrantes**: A escolha dos integrantes depende do tipo",
+        "llm_status": "completed",
+        "llm_model": "qwen2.5:0.5b-instruct",
+        "dispatch_status": "request_failed",
+        "request_latency_seconds": 7.364
+      }
+    },
+    {
+      "case": {
+        "id": "new_location_1",
+        "category": "location",
+        "text": "qual o endereco completo de voces?",
+        "expected": "generic_model"
+      },
+      "status": "ok",
+      "error": "",
+      "passed": false,
+      "issues": [
+        "location_missing_official_reference"
+      ],
+      "result": {
+        "external_message_id": "wamid.prod.cli.20260416114319.98c96dab",
+        "inbound_message_id": "d8757b73-d018-4906-acd1-3dc61a1edd93",
+        "outbound_message_id": "9d0860f8-ae3a-42a5-b5c8-cfea915fe0cf",
+        "reply_text": "Desculpe pela confusão anterior. Aqui está a informação correta: Endereço: Rua das Flores, 123 - Bairro da Paz, Cidade Nova, São Paulo/SP Obrigado por esclarecer! Se precisar de mais alguma coisa, estou à disposição",
+        "llm_status": "completed",
+        "llm_model": "qwen2.5:1.5b-instruct",
+        "dispatch_status": "request_failed",
+        "request_latency_seconds": 19.506
+      }
+    },
+    {
+      "case": {
+        "id": "new_location_2",
+        "category": "location",
+        "text": "fica em volta redonda mesmo? qual bairro?",
+        "expected": "generic_model"
+      },
+      "status": "ok",
+      "error": "",
+      "passed": false,
+      "issues": [
+        "location_missing_official_reference"
+      ],
+      "result": {
+        "external_message_id": "wamid.prod.cli.20260416114339.ae94d427",
+        "inbound_message_id": "1739260f-6d44-4b0e-8d0c-af5175141d4b",
+        "outbound_message_id": "750c57dc-0afe-4f07-a7c3-773f608f2d56",
+        "reply_text": "Desculpe, mas como assistente de inteligência artificial, não tenho a capacidade de fornecer informações geográficas ou localização exata. Eu posso ajudar com orientações gerais sobre onde se encontra o estúdio e as áreas próximas, mas não posso informar detalhes específicos do endereço ou bairro",
+        "llm_status": "completed",
+        "llm_model": "qwen2.5:1.5b-instruct",
+        "dispatch_status": "request_failed",
+        "request_latency_seconds": 21.176
+      }
+    },
+    {
+      "case": {
+        "id": "new_audio_1",
+        "category": "audio",
+        "text": "audio e microfone estao inclusos na locacao?",
+        "expected": "generic_model"
+      },
+      "status": "ok",
+      "error": "",
+      "passed": false,
+      "issues": [
+        "audio_missing_negative_constraint"
+      ],
+      "result": {
+        "external_message_id": "wamid.prod.cli.20260416114400.11ea1136",
+        "inbound_message_id": "2aadb7a5-7e60-45e4-a820-dcbffc6f20b4",
+        "outbound_message_id": "d73e4b76-9f76-497c-b907-495471b67451",
+        "reply_text": "Sim, os audio e o microfone são incluídos na locação. Você pode usar esses recursos para agradecer ao cliente ou fornecer informações adicionais sobre a sua loja",
+        "llm_status": "completed",
+        "llm_model": "qwen2.5:0.5b-instruct",
+        "dispatch_status": "request_failed",
+        "request_latency_seconds": 5.054
+      }
+    },
+    {
+      "case": {
+        "id": "new_audio_2",
+        "category": "audio",
+        "text": "posso usar lapela de voces no estudio?",
+        "expected": "generic_model"
+      },
+      "status": "ok",
+      "error": "",
+      "passed": false,
+      "issues": [
+        "audio_answer_missing_topic",
+        "audio_missing_negative_constraint"
+      ],
+      "result": {
+        "external_message_id": "wamid.prod.cli.20260416114405.a7974970",
+        "inbound_message_id": "2ab21e4d-0932-407f-ac1f-5fb46829c0e7",
+        "outbound_message_id": "72d45a69-546a-42ea-b16c-94bfd965fa55",
+        "reply_text": "Sim, posso usar lapelas de voces no nosso estúdio. Elas são uma ótima opção para agradar os clientes e melhorar o ambiente de trabalho. O uso de lapelas de voces também pode ajudar a manter um tom mais formal e agendado na sala do trabalho",
+        "llm_status": "completed",
+        "llm_model": "qwen2.5:0.5b-instruct",
+        "dispatch_status": "request_failed",
+        "request_latency_seconds": 5.092
+      }
+    },
+    {
+      "case": {
+        "id": "new_structure_1",
+        "category": "structure",
+        "text": "o estudio tem ar condicionado e quantos softboxes?",
+        "expected": "generic_model"
+      },
+      "status": "ok",
+      "error": "",
+      "passed": true,
+      "issues": [],
+      "result": {
+        "external_message_id": "wamid.prod.cli.20260416114410.c48c53f2",
+        "inbound_message_id": "fb0ccf38-a095-4ec2-9429-acf6d5b5ad11",
+        "outbound_message_id": "d37d484d-e608-4371-b6c1-f58fad3e027c",
+        "reply_text": "O estúdio tem ar condicionado, mas não mencionamos quantos softboxes ou outros dispositivos de iluminação eletrônica. Se você tiver mais informações sobre o tipo de iluminação que está utilizando, ficarei feliz em fornecer detalhes adicionais",
+        "llm_status": "completed",
+        "llm_model": "qwen2.5:0.5b-instruct",
+        "dispatch_status": "request_failed",
+        "request_latency_seconds": 5.079
+      }
+    },
+    {
+      "case": {
+        "id": "new_generic_1",
+        "category": "generic",
+        "text": "sou novo cliente, como funciona para reservar e pagar?",
+        "expected": "generic_model"
+      },
+      "status": "ok",
+      "error": "",
+      "passed": false,
+      "issues": [
+        "unexpected_rule_model=rule_schedule_site_only"
+      ],
+      "result": {
+        "external_message_id": "wamid.prod.cli.20260416114415.8b3e2293",
+        "inbound_message_id": "f0cf4b89-dff6-4e85-aef2-c69c3cd0676f",
+        "outbound_message_id": "d3ba7d21-484f-4d55-a204-4de076131c89",
+        "reply_text": "O agendamento e feito totalmente pelo nosso site, mas ele e super intuitivo, tenho certeza que voce conseguira agendar de forma facil e simples! Nao consigo confirmar horario manualmente por aqui.\n\nAgendamento pelo site: https://www.fcvip.com.br/formulario",
+        "llm_status": "completed",
+        "llm_model": "rule_schedule_site_only",
+        "dispatch_status": "request_failed",
+        "request_latency_seconds": 0.53
+      }
+    }
+  ]
+}

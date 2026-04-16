@@ -1,0 +1,1046 @@
+{
+  "run_at_utc": "2026-04-16T11:51:49.351003+00:00",
+  "selection": {
+    "previous_report": ".qa_tmp\\stress_locacao_regression_20260416_114416.json",
+    "passed_sampled": 10,
+    "failed_repeated": 32,
+    "new_cases": 10,
+    "total_selected": 42
+  },
+  "config": {
+    "base_url": "https://projeto-automacao-production.up.railway.app",
+    "reply_timeout": 90,
+    "poll_interval": 2.0
+  },
+  "summary": {
+    "total_cases": 42,
+    "passed": 39,
+    "failed": 3,
+    "pass_rate_pct": 92.85714285714286,
+    "by_category": [
+      {
+        "category": "audio",
+        "total": 11,
+        "passed": 10,
+        "failed": 1,
+        "pass_rate_pct": 90.9090909090909
+      },
+      {
+        "category": "close",
+        "total": 1,
+        "passed": 1,
+        "failed": 0,
+        "pass_rate_pct": 100.0
+      },
+      {
+        "category": "generic",
+        "total": 2,
+        "passed": 1,
+        "failed": 1,
+        "pass_rate_pct": 50.0
+      },
+      {
+        "category": "greeting",
+        "total": 1,
+        "passed": 1,
+        "failed": 0,
+        "pass_rate_pct": 100.0
+      },
+      {
+        "category": "location",
+        "total": 11,
+        "passed": 10,
+        "failed": 1,
+        "pass_rate_pct": 90.9090909090909
+      },
+      {
+        "category": "paid_changes",
+        "total": 8,
+        "passed": 8,
+        "failed": 0,
+        "pass_rate_pct": 100.0
+      },
+      {
+        "category": "prices",
+        "total": 1,
+        "passed": 1,
+        "failed": 0,
+        "pass_rate_pct": 100.0
+      },
+      {
+        "category": "risk_materials",
+        "total": 1,
+        "passed": 1,
+        "failed": 0,
+        "pass_rate_pct": 100.0
+      },
+      {
+        "category": "risk_people",
+        "total": 4,
+        "passed": 4,
+        "failed": 0,
+        "pass_rate_pct": 100.0
+      },
+      {
+        "category": "schedule",
+        "total": 1,
+        "passed": 1,
+        "failed": 0,
+        "pass_rate_pct": 100.0
+      },
+      {
+        "category": "structure",
+        "total": 1,
+        "passed": 1,
+        "failed": 0,
+        "pass_rate_pct": 100.0
+      }
+    ],
+    "top_issues": [
+      [
+        "location_missing_official_reference",
+        1
+      ],
+      [
+        "audio_answer_missing_topic",
+        1
+      ],
+      [
+        "unexpected_rule_model=rule_schedule_site_only",
+        1
+      ]
+    ]
+  },
+  "results": [
+    {
+      "case": {
+        "id": "audio_6",
+        "category": "audio",
+        "text": "vocês oferecem audio?",
+        "expected": "generic_model"
+      },
+      "status": "ok",
+      "error": "",
+      "passed": true,
+      "issues": [],
+      "result": {
+        "external_message_id": "wamid.prod.cli.20260416114751.10040d25",
+        "inbound_message_id": "6fbc6d3c-19ee-4379-8a19-1e4f170d369f",
+        "outbound_message_id": "01540404-1024-4099-9b58-bb0d7083d4b3",
+        "reply_text": "Atualmente a FC VIP nao oferece equipamentos de audio (microfones, lapela, interface, boom ou mesa de som). Trabalhamos apenas com estrutura fotografica e iluminacao",
+        "llm_status": "completed",
+        "llm_model": "qwen2.5:0.5b-instruct",
+        "dispatch_status": "request_failed",
+        "request_latency_seconds": 5.637
+      }
+    },
+    {
+      "case": {
+        "id": "close_1",
+        "category": "close",
+        "text": "obrigado, vou fechar pelo site",
+        "expected": "rule_close"
+      },
+      "status": "ok",
+      "error": "",
+      "passed": true,
+      "issues": [],
+      "result": {
+        "external_message_id": "wamid.prod.cli.20260416114757.f9ba1699",
+        "inbound_message_id": "fc664358-a3bc-4b1d-865c-4ed4d216297a",
+        "outbound_message_id": "7d5ec473-b469-4b32-8971-c6fbd75ba0f4",
+        "reply_text": "Por nada! Sempre que precisar de ajuda é só entrar em contato a FC VIP agradece seu contato",
+        "llm_status": "completed",
+        "llm_model": "rule_close",
+        "dispatch_status": "request_failed",
+        "request_latency_seconds": 2.777
+      }
+    },
+    {
+      "case": {
+        "id": "generic_1",
+        "category": "generic",
+        "text": "nunca fui ai, como funciona?",
+        "expected": "generic_model"
+      },
+      "status": "ok",
+      "error": "",
+      "passed": true,
+      "issues": [],
+      "result": {
+        "external_message_id": "wamid.prod.cli.20260416114800.db0ea726",
+        "inbound_message_id": "ab73b740-08f6-4aca-a855-2dd9a222f53c",
+        "outbound_message_id": "d06e0416-0b05-4c20-9a52-696222742df4",
+        "reply_text": "Desculpe se a confusão foi causada. Como sou uma inteligência artificial, eu não tenho experiências pessoais ou de terceiros. No entanto, posso te ajudar a entender o funcionamento geral do sistema: 1. **Horário Perguntado**: O horário pego para perguntas é 18h. 2. **Ja Conheceu Estudio**: Você já conheceu o estúdio? Isso",
+        "llm_status": "completed",
+        "llm_model": "qwen2.5:0.5b-instruct",
+        "dispatch_status": "request_failed",
+        "request_latency_seconds": 5.445
+      }
+    },
+    {
+      "case": {
+        "id": "greet_1",
+        "category": "greeting",
+        "text": "oi",
+        "expected": "generic_model"
+      },
+      "status": "ok",
+      "error": "",
+      "passed": true,
+      "issues": [],
+      "result": {
+        "external_message_id": "wamid.prod.cli.20260416114805.f19bdefd",
+        "inbound_message_id": "6b74b6d2-788b-4b4d-a3aa-567ca9deb5f5",
+        "outbound_message_id": "48a0cd5a-7676-4c07-9b15-f5f95517a620",
+        "reply_text": "Olá! Como posso ajudar você hoje?",
+        "llm_status": "completed",
+        "llm_model": "qwen2.5:1.5b-instruct",
+        "dispatch_status": "request_failed",
+        "request_latency_seconds": 14.343
+      }
+    },
+    {
+      "case": {
+        "id": "paid_change_1",
+        "category": "paid_changes",
+        "text": "preciso cancelar um horario que ja paguei",
+        "expected": "rule_handoff"
+      },
+      "status": "ok",
+      "error": "",
+      "passed": true,
+      "issues": [],
+      "result": {
+        "external_message_id": "wamid.prod.cli.20260416114819.078a7604",
+        "inbound_message_id": "49455079-9150-454a-a95b-5f768966f766",
+        "outbound_message_id": "315efdae-bb91-4f00-b337-89463cdf301a",
+        "reply_text": "Entendi sua solicitacao. Para esse tipo de caso, preciso encaminhar para a nossa equipe humana para avaliacao e confirmacao. Motivo: cancelamento/reagendamento de horario ja pago.",
+        "llm_status": "completed",
+        "llm_model": "rule_human_handoff",
+        "dispatch_status": "request_failed",
+        "request_latency_seconds": 2.78
+      }
+    },
+    {
+      "case": {
+        "id": "price_10",
+        "category": "prices",
+        "text": "me manda os valores",
+        "expected": "generic_model"
+      },
+      "status": "ok",
+      "error": "",
+      "passed": true,
+      "issues": [],
+      "result": {
+        "external_message_id": "wamid.prod.cli.20260416114822.7913c91f",
+        "inbound_message_id": "84ee9ed9-9054-48ab-9272-c1ad1780d011",
+        "outbound_message_id": "d9f5294f-61ed-4949-adb7-c0c90aee0e45",
+        "reply_text": "Desculpe pela confusão, mas como um assistente de inteligência artificial, eu não tenho a capacidade de fornecer valores. No entanto, você pode entrar em contato com o FC VIP através do site para obter mais informações sobre os preços e condições específicas dos seus serviços.\n\nPacotes e valores no site: https://www.fcvip.com.br/formulario",
+        "llm_status": "completed",
+        "llm_model": "qwen2.5:1.5b-instruct",
+        "dispatch_status": "request_failed",
+        "request_latency_seconds": 17.713
+      }
+    },
+    {
+      "case": {
+        "id": "risk_materials_1",
+        "category": "risk_materials",
+        "text": "queremos usar confete no ensaio",
+        "expected": "rule_handoff"
+      },
+      "status": "ok",
+      "error": "",
+      "passed": true,
+      "issues": [],
+      "result": {
+        "external_message_id": "wamid.prod.cli.20260416114840.1963396b",
+        "inbound_message_id": "4e8523cc-50a8-4479-b20a-45c9eef16090",
+        "outbound_message_id": "501f9aa3-88ef-4750-949e-e9b31b60d3e8",
+        "reply_text": "Entendi sua solicitacao. Para esse tipo de caso, preciso encaminhar para a nossa equipe humana para avaliacao e confirmacao. Motivo: uso de itens/efeitos que exigem avaliacao (ex.: sujeira, liquidos, fumaca, glitter, fogo ou animais).",
+        "llm_status": "completed",
+        "llm_model": "rule_human_handoff",
+        "dispatch_status": "request_failed",
+        "request_latency_seconds": 2.78
+      }
+    },
+    {
+      "case": {
+        "id": "risk_people_1",
+        "category": "risk_people",
+        "text": "vamos em 6 pessoas para gravar",
+        "expected": "rule_handoff"
+      },
+      "status": "ok",
+      "error": "",
+      "passed": true,
+      "issues": [],
+      "result": {
+        "external_message_id": "wamid.prod.cli.20260416114843.d76cbbc0",
+        "inbound_message_id": "539f2d40-2c17-4e06-91fa-1b891724a377",
+        "outbound_message_id": "19b1705f-1bc0-4294-9ed2-a08bc5dd5336",
+        "reply_text": "Entendi sua solicitacao. Para esse tipo de caso, preciso encaminhar para a nossa equipe humana para avaliacao e confirmacao. Motivo: quantidade de pessoas acima do permitido.",
+        "llm_status": "completed",
+        "llm_model": "rule_human_handoff",
+        "dispatch_status": "request_failed",
+        "request_latency_seconds": 0.525
+      }
+    },
+    {
+      "case": {
+        "id": "schedule_1",
+        "category": "schedule",
+        "text": "quero agendar sexta as 18h",
+        "expected": "rule_schedule"
+      },
+      "status": "ok",
+      "error": "",
+      "passed": true,
+      "issues": [],
+      "result": {
+        "external_message_id": "wamid.prod.cli.20260416114843.300c0347",
+        "inbound_message_id": "a0036c95-6397-4731-9eee-b2c80f6bf03c",
+        "outbound_message_id": "b76d6e00-2deb-48ec-a02f-3e7ce1241f87",
+        "reply_text": "O agendamento e feito totalmente pelo nosso site, mas ele e super intuitivo, tenho certeza que voce conseguira agendar de forma facil e simples! Nao consigo confirmar horario manualmente por aqui.\n\nAgendamento pelo site: https://www.fcvip.com.br/formulario",
+        "llm_status": "completed",
+        "llm_model": "rule_schedule_site_only",
+        "dispatch_status": "request_failed",
+        "request_latency_seconds": 2.972
+      }
+    },
+    {
+      "case": {
+        "id": "new_structure_1",
+        "category": "structure",
+        "text": "o estudio tem ar condicionado e quantos softboxes?",
+        "expected": "generic_model"
+      },
+      "status": "ok",
+      "error": "",
+      "passed": true,
+      "issues": [],
+      "result": {
+        "external_message_id": "wamid.prod.cli.20260416114846.43cdc972",
+        "inbound_message_id": "0aa414ae-0cb5-4159-b73b-a1f3548665e0",
+        "outbound_message_id": "2c26ee05-c6e7-4b1e-a3bd-25f01781a1ac",
+        "reply_text": "O estúdio tem ar condicionado, mas não mencionamos quantos softboxes ou outros dispositivos de iluminação eletrônica estão instalados. No entanto, geralmente o estúdio teria um conjunto de luzes para a imagem e a iluminação do ambiente. Se você tiver mais detalhes sobre o que está sendo feito no estúdio, ficarei feliz em ajudar com informações adicionais",
+        "llm_status": "completed",
+        "llm_model": "qwen2.5:0.5b-instruct",
+        "dispatch_status": "request_failed",
+        "request_latency_seconds": 8.149
+      }
+    },
+    {
+      "case": {
+        "id": "audio_1",
+        "category": "audio",
+        "text": "tem microfone de lapela?",
+        "expected": "generic_model"
+      },
+      "status": "ok",
+      "error": "",
+      "passed": true,
+      "issues": [],
+      "result": {
+        "external_message_id": "wamid.prod.cli.20260416114854.1e11d52b",
+        "inbound_message_id": "f0e17757-7a6e-4d13-9455-46a34b7f7700",
+        "outbound_message_id": "0c3bbe51-0ada-4770-9adb-8597d6958f0a",
+        "reply_text": "Desculpe, mas como sou um assistente virtual, não tenho acesso a informações sobre o estoque ou disponibilidade de produtos específicos. Você pode entrar em contato com a FC VIP através do site para obter mais detalhes e garantir que você possa adquirir o microfone necessário",
+        "llm_status": "completed",
+        "llm_model": "qwen2.5:1.5b-instruct",
+        "dispatch_status": "request_failed",
+        "request_latency_seconds": 16.56
+      }
+    },
+    {
+      "case": {
+        "id": "loc_7",
+        "category": "location",
+        "text": "da para parar carro perto?",
+        "expected": "generic_model"
+      },
+      "status": "ok",
+      "error": "",
+      "passed": true,
+      "issues": [],
+      "result": {
+        "external_message_id": "wamid.prod.cli.20260416114911.0a0b58e8",
+        "inbound_message_id": "94431f94-7a83-462c-965b-293d7895d746",
+        "outbound_message_id": "4060dff1-5731-4d12-83a6-feb81701d5ca",
+        "reply_text": "O estudio fica na Rua Corifeu Marques, 32 - Jardim Amalia, Volta Redonda/RJ. O estacionamento e na via publica (rua) e o acesso ao estudio e por escadas",
+        "llm_status": "completed",
+        "llm_model": "qwen2.5:0.5b-instruct",
+        "dispatch_status": "request_failed",
+        "request_latency_seconds": 5.422
+      }
+    },
+    {
+      "case": {
+        "id": "loc_4",
+        "category": "location",
+        "text": "como chego ai?",
+        "expected": "generic_model"
+      },
+      "status": "ok",
+      "error": "",
+      "passed": true,
+      "issues": [],
+      "result": {
+        "external_message_id": "wamid.prod.cli.20260416114916.6b0c55bc",
+        "inbound_message_id": "77db9f5e-dd39-4d67-a3f6-d71d31a5f82a",
+        "outbound_message_id": "77324544-9a8a-4c75-b380-84e4c9bcdc05",
+        "reply_text": "O estudio fica na Rua Corifeu Marques, 32 - Jardim Amalia, Volta Redonda/RJ. O estacionamento e na via publica (rua) e o acesso ao estudio e por escadas",
+        "llm_status": "completed",
+        "llm_model": "qwen2.5:0.5b-instruct",
+        "dispatch_status": "request_failed",
+        "request_latency_seconds": 5.034
+      }
+    },
+    {
+      "case": {
+        "id": "loc_3",
+        "category": "location",
+        "text": "fica em qual bairro?",
+        "expected": "generic_model"
+      },
+      "status": "ok",
+      "error": "",
+      "passed": true,
+      "issues": [],
+      "result": {
+        "external_message_id": "wamid.prod.cli.20260416114921.7e8b5427",
+        "inbound_message_id": "2e6160ac-49d0-4a5f-85a8-040d28317c16",
+        "outbound_message_id": "6de7a0db-ca17-4b4f-a210-77afac37c4e0",
+        "reply_text": "O estudio fica na Rua Corifeu Marques, 32 - Jardim Amalia, Volta Redonda/RJ. O estacionamento e na via publica (rua) e o acesso ao estudio e por escadas",
+        "llm_status": "completed",
+        "llm_model": "qwen2.5:0.5b-instruct",
+        "dispatch_status": "request_failed",
+        "request_latency_seconds": 5.546
+      }
+    },
+    {
+      "case": {
+        "id": "loc_5",
+        "category": "location",
+        "text": "o acesso e por escada?",
+        "expected": "generic_model"
+      },
+      "status": "ok",
+      "error": "",
+      "passed": true,
+      "issues": [],
+      "result": {
+        "external_message_id": "wamid.prod.cli.20260416114927.768065ba",
+        "inbound_message_id": "fc2fa37b-51cf-4802-bcf4-84ecd0d61fdc",
+        "outbound_message_id": "77351e88-c71e-436f-a812-c2daa9bfdd37",
+        "reply_text": "O estudio fica na Rua Corifeu Marques, 32 - Jardim Amalia, Volta Redonda/RJ. O estacionamento e na via publica (rua) e o acesso ao estudio e por escadas",
+        "llm_status": "completed",
+        "llm_model": "qwen2.5:0.5b-instruct",
+        "dispatch_status": "request_failed",
+        "request_latency_seconds": 5.442
+      }
+    },
+    {
+      "case": {
+        "id": "paid_change_3",
+        "category": "paid_changes",
+        "text": "ja paguei e quero trocar o horario",
+        "expected": "rule_handoff"
+      },
+      "status": "ok",
+      "error": "",
+      "passed": true,
+      "issues": [],
+      "result": {
+        "external_message_id": "wamid.prod.cli.20260416114932.ae10799c",
+        "inbound_message_id": "c30cedc7-480a-4239-8067-3197e0959b6a",
+        "outbound_message_id": "081725a7-13b7-47af-a2c2-90bad57ddfcb",
+        "reply_text": "Entendi sua solicitacao. Para esse tipo de caso, preciso encaminhar para a nossa equipe humana para avaliacao e confirmacao. Motivo: cancelamento/reagendamento de horario ja pago.",
+        "llm_status": "completed",
+        "llm_model": "rule_human_handoff",
+        "dispatch_status": "request_failed",
+        "request_latency_seconds": 0.709
+      }
+    },
+    {
+      "case": {
+        "id": "loc_1",
+        "category": "location",
+        "text": "onde fica o estudio?",
+        "expected": "generic_model"
+      },
+      "status": "ok",
+      "error": "",
+      "passed": true,
+      "issues": [],
+      "result": {
+        "external_message_id": "wamid.prod.cli.20260416114933.274d98a6",
+        "inbound_message_id": "504746f8-7e92-495b-803a-f44806bc0359",
+        "outbound_message_id": "a6133d53-4c47-402a-9e10-0737502e871f",
+        "reply_text": "O estudio fica na Rua Corifeu Marques, 32 - Jardim Amalia, Volta Redonda/RJ. O estacionamento e na via publica (rua) e o acesso ao estudio e por escadas",
+        "llm_status": "completed",
+        "llm_model": "qwen2.5:0.5b-instruct",
+        "dispatch_status": "request_failed",
+        "request_latency_seconds": 5.419
+      }
+    },
+    {
+      "case": {
+        "id": "paid_change_9",
+        "category": "paid_changes",
+        "text": "consigo trocar data apos pagamento?",
+        "expected": "rule_handoff"
+      },
+      "status": "ok",
+      "error": "",
+      "passed": true,
+      "issues": [],
+      "result": {
+        "external_message_id": "wamid.prod.cli.20260416114939.3c54cba3",
+        "inbound_message_id": "4e9db944-27ee-4116-b15c-5c649fdb5920",
+        "outbound_message_id": "b8910fc4-50b4-4e51-8feb-c40c4eeb5b22",
+        "reply_text": "Entendi sua solicitacao. Para esse tipo de caso, preciso encaminhar para a nossa equipe humana para avaliacao e confirmacao. Motivo: cancelamento/reagendamento de horario ja pago.",
+        "llm_status": "completed",
+        "llm_model": "rule_human_handoff",
+        "dispatch_status": "request_failed",
+        "request_latency_seconds": 3.171
+      }
+    },
+    {
+      "case": {
+        "id": "audio_9",
+        "category": "audio",
+        "text": "fornecem microfones?",
+        "expected": "generic_model"
+      },
+      "status": "ok",
+      "error": "",
+      "passed": true,
+      "issues": [],
+      "result": {
+        "external_message_id": "wamid.prod.cli.20260416114942.7cbb4732",
+        "inbound_message_id": "5416ad09-4d97-49a0-aee5-af0f01e1bdc2",
+        "outbound_message_id": "5a53613a-7fae-42e1-9bc8-d01a2f22aa94",
+        "reply_text": "Atualmente a FC VIP nao oferece equipamentos de audio (microfones, lapela, interface, boom ou mesa de som). Trabalhamos apenas com estrutura fotografica e iluminacao",
+        "llm_status": "completed",
+        "llm_model": "qwen2.5:0.5b-instruct",
+        "dispatch_status": "request_failed",
+        "request_latency_seconds": 5.062
+      }
+    },
+    {
+      "case": {
+        "id": "audio_10",
+        "category": "audio",
+        "text": "audio esta incluso?",
+        "expected": "generic_model"
+      },
+      "status": "ok",
+      "error": "",
+      "passed": true,
+      "issues": [],
+      "result": {
+        "external_message_id": "wamid.prod.cli.20260416114947.9c80a8c5",
+        "inbound_message_id": "a191d930-3659-4374-91c9-306334340432",
+        "outbound_message_id": "a897c364-a9d6-43bb-a4f3-461bcc4136fe",
+        "reply_text": "Atualmente a FC VIP nao oferece equipamentos de audio (microfones, lapela, interface, boom ou mesa de som). Trabalhamos apenas com estrutura fotografica e iluminacao",
+        "llm_status": "completed",
+        "llm_model": "qwen2.5:0.5b-instruct",
+        "dispatch_status": "request_failed",
+        "request_latency_seconds": 7.501
+      }
+    },
+    {
+      "case": {
+        "id": "audio_4",
+        "category": "audio",
+        "text": "tem mesa de som ai?",
+        "expected": "generic_model"
+      },
+      "status": "ok",
+      "error": "",
+      "passed": true,
+      "issues": [],
+      "result": {
+        "external_message_id": "wamid.prod.cli.20260416114954.9d86d3ad",
+        "inbound_message_id": "d8034aed-5ba9-4fa0-aa4e-305372c8284d",
+        "outbound_message_id": "af04b1c0-0e9b-4fa3-a5a5-d36eec53cd99",
+        "reply_text": "Atualmente a FC VIP nao oferece equipamentos de audio (microfones, lapela, interface, boom ou mesa de som). Trabalhamos apenas com estrutura fotografica e iluminacao",
+        "llm_status": "completed",
+        "llm_model": "qwen2.5:0.5b-instruct",
+        "dispatch_status": "request_failed",
+        "request_latency_seconds": 5.259
+      }
+    },
+    {
+      "case": {
+        "id": "loc_10",
+        "category": "location",
+        "text": "fica na rua ou em shopping?",
+        "expected": "generic_model"
+      },
+      "status": "ok",
+      "error": "",
+      "passed": false,
+      "issues": [
+        "location_missing_official_reference"
+      ],
+      "result": {
+        "external_message_id": "wamid.prod.cli.20260416115000.559888af",
+        "inbound_message_id": "417b81ee-857b-49b2-ba4a-4b593a847eeb",
+        "outbound_message_id": "c47f804f-6116-4b5a-a023-2c5a79a6f251",
+        "reply_text": "O cliente está sugerindo que o estacionamento seja feito na propria rua, mas ressaltou que a luz irá ser iluminada pelo próprio estacionante. Isso sugere que ele gostaria de se sentar e fazer o trabalho no local onde ele está. Portanto, parece que ele preferiria se sentar em um local próximo ao estacionamento",
+        "llm_status": "completed",
+        "llm_model": "qwen2.5:0.5b-instruct",
+        "dispatch_status": "request_failed",
+        "request_latency_seconds": 5.212
+      }
+    },
+    {
+      "case": {
+        "id": "audio_5",
+        "category": "audio",
+        "text": "da pra gravar com lapela de voces?",
+        "expected": "generic_model"
+      },
+      "status": "ok",
+      "error": "",
+      "passed": true,
+      "issues": [],
+      "result": {
+        "external_message_id": "wamid.prod.cli.20260416115005.37957912",
+        "inbound_message_id": "9cbf0315-4048-45ed-9eea-494c50b227ce",
+        "outbound_message_id": "9ad03e05-1134-48c7-98a9-51e431ede5de",
+        "reply_text": "Atualmente a FC VIP nao oferece equipamentos de audio (microfones, lapela, interface, boom ou mesa de som). Trabalhamos apenas com estrutura fotografica e iluminacao",
+        "llm_status": "completed",
+        "llm_model": "qwen2.5:0.5b-instruct",
+        "dispatch_status": "request_failed",
+        "request_latency_seconds": 6.115
+      }
+    },
+    {
+      "case": {
+        "id": "audio_8",
+        "category": "audio",
+        "text": "tem interface de audio?",
+        "expected": "generic_model"
+      },
+      "status": "ok",
+      "error": "",
+      "passed": false,
+      "issues": [
+        "audio_answer_missing_topic"
+      ],
+      "result": {
+        "external_message_id": "wamid.prod.cli.20260416115011.af497479",
+        "inbound_message_id": "f843af86-765d-4e75-8364-62a095656a90",
+        "outbound_message_id": "1c91a415-6c7d-4c27-b02e-aee7dffda7a4",
+        "reply_text": "Sim, o cliente tem a opção de usar um áudio para transmitir suas mensagens. Ele pode escolher entre \"sair\" ou \"continuar\", e também ele pode selecionar se deseja ou não enviar uma mensagem ao cliente. No entanto, este é apenas um recurso que foi adicionado recentemente e não está presente em todos os servidores do sistema",
+        "llm_status": "completed",
+        "llm_model": "qwen2.5:0.5b-instruct",
+        "dispatch_status": "request_failed",
+        "request_latency_seconds": 5.44
+      }
+    },
+    {
+      "case": {
+        "id": "audio_7",
+        "category": "audio",
+        "text": "tem boom ou shotgun?",
+        "expected": "generic_model"
+      },
+      "status": "ok",
+      "error": "",
+      "passed": true,
+      "issues": [],
+      "result": {
+        "external_message_id": "wamid.prod.cli.20260416115016.4d90019d",
+        "inbound_message_id": "a836670a-12bc-4a46-bda9-6b586e27b154",
+        "outbound_message_id": "a4985080-e2e6-4c96-a7dc-1228998d6414",
+        "reply_text": "Atualmente a FC VIP nao oferece equipamentos de audio (microfones, lapela, interface, boom ou mesa de som). Trabalhamos apenas com estrutura fotografica e iluminacao",
+        "llm_status": "completed",
+        "llm_model": "qwen2.5:0.5b-instruct",
+        "dispatch_status": "request_failed",
+        "request_latency_seconds": 5.077
+      }
+    },
+    {
+      "case": {
+        "id": "loc_9",
+        "category": "location",
+        "text": "tem elevador?",
+        "expected": "generic_model"
+      },
+      "status": "ok",
+      "error": "",
+      "passed": true,
+      "issues": [],
+      "result": {
+        "external_message_id": "wamid.prod.cli.20260416115021.15ec519f",
+        "inbound_message_id": "974d41b4-4ea0-4624-8e6e-eb642dc4a4f5",
+        "outbound_message_id": "582839c5-17d2-445b-8ac3-ea734f0cc9d1",
+        "reply_text": "O estudio fica na Rua Corifeu Marques, 32 - Jardim Amalia, Volta Redonda/RJ. O estacionamento e na via publica (rua) e o acesso ao estudio e por escadas",
+        "llm_status": "completed",
+        "llm_model": "qwen2.5:0.5b-instruct",
+        "dispatch_status": "request_failed",
+        "request_latency_seconds": 5.068
+      }
+    },
+    {
+      "case": {
+        "id": "audio_3",
+        "category": "audio",
+        "text": "tem equipamento de audio?",
+        "expected": "generic_model"
+      },
+      "status": "ok",
+      "error": "",
+      "passed": true,
+      "issues": [],
+      "result": {
+        "external_message_id": "wamid.prod.cli.20260416115026.3511b4d3",
+        "inbound_message_id": "df2db4e8-57ec-48a7-9639-e651cd192af0",
+        "outbound_message_id": "5fe9d998-a8eb-48a8-a905-c169c5c0a5e6",
+        "reply_text": "Atualmente a FC VIP nao oferece equipamentos de audio (microfones, lapela, interface, boom ou mesa de som). Trabalhamos apenas com estrutura fotografica e iluminacao",
+        "llm_status": "completed",
+        "llm_model": "qwen2.5:0.5b-instruct",
+        "dispatch_status": "request_failed",
+        "request_latency_seconds": 5.256
+      }
+    },
+    {
+      "case": {
+        "id": "paid_change_6",
+        "category": "paid_changes",
+        "text": "ja esta pago, posso mudar o dia?",
+        "expected": "rule_handoff"
+      },
+      "status": "ok",
+      "error": "",
+      "passed": true,
+      "issues": [],
+      "result": {
+        "external_message_id": "wamid.prod.cli.20260416115032.ffe24c3b",
+        "inbound_message_id": "1e41f333-a5df-403e-915c-d6e182e40530",
+        "outbound_message_id": "cf514fcc-de4a-4fb9-822b-1c241cf8e07b",
+        "reply_text": "Entendi sua solicitacao. Para esse tipo de caso, preciso encaminhar para a nossa equipe humana para avaliacao e confirmacao. Motivo: cancelamento/reagendamento de horario ja pago.",
+        "llm_status": "completed",
+        "llm_model": "rule_human_handoff",
+        "dispatch_status": "request_failed",
+        "request_latency_seconds": 0.511
+      }
+    },
+    {
+      "case": {
+        "id": "paid_change_8",
+        "category": "paid_changes",
+        "text": "preciso reagendar reserva paga",
+        "expected": "rule_handoff"
+      },
+      "status": "ok",
+      "error": "",
+      "passed": true,
+      "issues": [],
+      "result": {
+        "external_message_id": "wamid.prod.cli.20260416115032.049dcce6",
+        "inbound_message_id": "329873fe-106f-4302-aa10-9ee25f83f572",
+        "outbound_message_id": "ae88963e-ca59-48d4-9716-abf3e754bb44",
+        "reply_text": "Entendi sua solicitacao. Para esse tipo de caso, preciso encaminhar para a nossa equipe humana para avaliacao e confirmacao. Motivo: cancelamento/reagendamento de horario ja pago.",
+        "llm_status": "completed",
+        "llm_model": "rule_human_handoff",
+        "dispatch_status": "request_failed",
+        "request_latency_seconds": 2.777
+      }
+    },
+    {
+      "case": {
+        "id": "paid_change_10",
+        "category": "paid_changes",
+        "text": "posso cancelar depois de pagar?",
+        "expected": "rule_handoff"
+      },
+      "status": "ok",
+      "error": "",
+      "passed": true,
+      "issues": [],
+      "result": {
+        "external_message_id": "wamid.prod.cli.20260416115035.751d0049",
+        "inbound_message_id": "325086b4-292c-47c5-95f1-a6a06c2e1079",
+        "outbound_message_id": "7ca303ed-51c0-4545-a3dd-cb8ced4e86f5",
+        "reply_text": "Entendi sua solicitacao. Para esse tipo de caso, preciso encaminhar para a nossa equipe humana para avaliacao e confirmacao. Motivo: cancelamento/reagendamento de horario ja pago.",
+        "llm_status": "completed",
+        "llm_model": "rule_human_handoff",
+        "dispatch_status": "request_failed",
+        "request_latency_seconds": 2.78
+      }
+    },
+    {
+      "case": {
+        "id": "risk_people_9",
+        "category": "risk_people",
+        "text": "somos 6, consegue liberar?",
+        "expected": "rule_handoff"
+      },
+      "status": "ok",
+      "error": "",
+      "passed": true,
+      "issues": [],
+      "result": {
+        "external_message_id": "wamid.prod.cli.20260416115038.d76a8e2b",
+        "inbound_message_id": "eabb876e-9d99-4a91-b5b0-bf98267a84fb",
+        "outbound_message_id": "bf095b61-6fd3-4e0b-9fd7-dbce1ebbefda",
+        "reply_text": "Entendi sua solicitacao. Para esse tipo de caso, preciso encaminhar para a nossa equipe humana para avaliacao e confirmacao. Motivo: quantidade de pessoas acima do permitido.",
+        "llm_status": "completed",
+        "llm_model": "rule_human_handoff",
+        "dispatch_status": "request_failed",
+        "request_latency_seconds": 2.982
+      }
+    },
+    {
+      "case": {
+        "id": "loc_8",
+        "category": "location",
+        "text": "o local e de facil acesso?",
+        "expected": "generic_model"
+      },
+      "status": "ok",
+      "error": "",
+      "passed": true,
+      "issues": [],
+      "result": {
+        "external_message_id": "wamid.prod.cli.20260416115041.109a03e9",
+        "inbound_message_id": "aba54be4-ceeb-4fb5-b792-57c05ccbd4f9",
+        "outbound_message_id": "24c15072-1c88-45d2-a6a3-7355663d9d04",
+        "reply_text": "O estudio fica na Rua Corifeu Marques, 32 - Jardim Amalia, Volta Redonda/RJ. O estacionamento e na via publica (rua) e o acesso ao estudio e por escadas",
+        "llm_status": "completed",
+        "llm_model": "qwen2.5:0.5b-instruct",
+        "dispatch_status": "request_failed",
+        "request_latency_seconds": 5.051
+      }
+    },
+    {
+      "case": {
+        "id": "loc_6",
+        "category": "location",
+        "text": "tem estacionamento?",
+        "expected": "generic_model"
+      },
+      "status": "ok",
+      "error": "",
+      "passed": true,
+      "issues": [],
+      "result": {
+        "external_message_id": "wamid.prod.cli.20260416115046.8bf4c6d9",
+        "inbound_message_id": "de606ebe-e173-41c0-abd5-78f370c9fa2e",
+        "outbound_message_id": "e349c5f6-47bc-484d-a9fa-f7300779b967",
+        "reply_text": "O estudio fica na Rua Corifeu Marques, 32 - Jardim Amalia, Volta Redonda/RJ. O estacionamento e na via publica (rua) e o acesso ao estudio e por escadas",
+        "llm_status": "completed",
+        "llm_model": "qwen2.5:0.5b-instruct",
+        "dispatch_status": "request_failed",
+        "request_latency_seconds": 5.438
+      }
+    },
+    {
+      "case": {
+        "id": "new_paid_change_1",
+        "category": "paid_changes",
+        "text": "paguei a reserva e preciso alterar a data para semana que vem",
+        "expected": "rule_handoff"
+      },
+      "status": "ok",
+      "error": "",
+      "passed": true,
+      "issues": [],
+      "result": {
+        "external_message_id": "wamid.prod.cli.20260416115051.83466ff5",
+        "inbound_message_id": "bd16f67d-e0b2-42b0-97cd-2d5c988d1c4d",
+        "outbound_message_id": "05aeee76-6637-46c9-af24-b8721bd5318f",
+        "reply_text": "Entendi sua solicitacao. Para esse tipo de caso, preciso encaminhar para a nossa equipe humana para avaliacao e confirmacao. Motivo: cancelamento/reagendamento de horario ja pago.",
+        "llm_status": "completed",
+        "llm_model": "rule_human_handoff",
+        "dispatch_status": "request_failed",
+        "request_latency_seconds": 0.515
+      }
+    },
+    {
+      "case": {
+        "id": "new_paid_change_2",
+        "category": "paid_changes",
+        "text": "quero trocar o horario de uma reserva ja paga",
+        "expected": "rule_handoff"
+      },
+      "status": "ok",
+      "error": "",
+      "passed": true,
+      "issues": [],
+      "result": {
+        "external_message_id": "wamid.prod.cli.20260416115052.7136cf8b",
+        "inbound_message_id": "c2fe9b2c-a1c5-4577-83d9-bb653c591694",
+        "outbound_message_id": "c487d47b-d336-442e-afce-af1c0b710b29",
+        "reply_text": "Entendi sua solicitacao. Para esse tipo de caso, preciso encaminhar para a nossa equipe humana para avaliacao e confirmacao. Motivo: cancelamento/reagendamento de horario ja pago.",
+        "llm_status": "completed",
+        "llm_model": "rule_human_handoff",
+        "dispatch_status": "request_failed",
+        "request_latency_seconds": 0.91
+      }
+    },
+    {
+      "case": {
+        "id": "new_risk_people_1",
+        "category": "risk_people",
+        "text": "somos 11 para gravar um clipe, pode liberar?",
+        "expected": "rule_handoff"
+      },
+      "status": "ok",
+      "error": "",
+      "passed": true,
+      "issues": [],
+      "result": {
+        "external_message_id": "wamid.prod.cli.20260416115053.8c63b1c8",
+        "inbound_message_id": "e937918d-28d8-4495-9240-5d2ad7bd1022",
+        "outbound_message_id": "8fda3034-d58b-4b40-bb1b-a91a16013c86",
+        "reply_text": "Entendi sua solicitacao. Para esse tipo de caso, preciso encaminhar para a nossa equipe humana para avaliacao e confirmacao. Motivo: quantidade de pessoas acima do permitido.",
+        "llm_status": "completed",
+        "llm_model": "rule_human_handoff",
+        "dispatch_status": "request_failed",
+        "request_latency_seconds": 2.775
+      }
+    },
+    {
+      "case": {
+        "id": "new_risk_people_2",
+        "category": "risk_people",
+        "text": "grupo com 6 integrantes para ensaio",
+        "expected": "rule_handoff"
+      },
+      "status": "ok",
+      "error": "",
+      "passed": true,
+      "issues": [],
+      "result": {
+        "external_message_id": "wamid.prod.cli.20260416115055.ad893311",
+        "inbound_message_id": "d3c79fbd-9838-42da-b407-ac0fd9e0148b",
+        "outbound_message_id": "834f0d3c-4154-4e3e-af3a-538fbfed813c",
+        "reply_text": "Entendi sua solicitacao. Para esse tipo de caso, preciso encaminhar para a nossa equipe humana para avaliacao e confirmacao. Motivo: quantidade de pessoas acima do permitido.",
+        "llm_status": "completed",
+        "llm_model": "rule_human_handoff",
+        "dispatch_status": "request_failed",
+        "request_latency_seconds": 0.513
+      }
+    },
+    {
+      "case": {
+        "id": "new_location_1",
+        "category": "location",
+        "text": "qual o endereco completo de voces?",
+        "expected": "generic_model"
+      },
+      "status": "ok",
+      "error": "",
+      "passed": true,
+      "issues": [],
+      "result": {
+        "external_message_id": "wamid.prod.cli.20260416115056.4150b955",
+        "inbound_message_id": "717f8c32-eadb-467c-be52-fe60037efcbc",
+        "outbound_message_id": "8361eebe-b891-47ec-ac2c-92f236edc722",
+        "reply_text": "O estudio fica na Rua Corifeu Marques, 32 - Jardim Amalia, Volta Redonda/RJ. O estacionamento e na via publica (rua) e o acesso ao estudio e por escadas",
+        "llm_status": "completed",
+        "llm_model": "qwen2.5:0.5b-instruct",
+        "dispatch_status": "request_failed",
+        "request_latency_seconds": 5.815
+      }
+    },
+    {
+      "case": {
+        "id": "new_location_2",
+        "category": "location",
+        "text": "fica em volta redonda mesmo? qual bairro?",
+        "expected": "generic_model"
+      },
+      "status": "ok",
+      "error": "",
+      "passed": true,
+      "issues": [],
+      "result": {
+        "external_message_id": "wamid.prod.cli.20260416115102.5fe0a7cd",
+        "inbound_message_id": "b63bcacd-562e-4641-9d67-c27d4f158a78",
+        "outbound_message_id": "7c181fa5-a018-4bc9-b26c-072de07c096f",
+        "reply_text": "O estudio fica na Rua Corifeu Marques, 32 - Jardim Amalia, Volta Redonda/RJ. O estacionamento e na via publica (rua) e o acesso ao estudio e por escadas",
+        "llm_status": "completed",
+        "llm_model": "qwen2.5:1.5b-instruct",
+        "dispatch_status": "request_failed",
+        "request_latency_seconds": 18.301
+      }
+    },
+    {
+      "case": {
+        "id": "new_audio_1",
+        "category": "audio",
+        "text": "audio e microfone estao inclusos na locacao?",
+        "expected": "generic_model"
+      },
+      "status": "ok",
+      "error": "",
+      "passed": true,
+      "issues": [],
+      "result": {
+        "external_message_id": "wamid.prod.cli.20260416115120.298a533d",
+        "inbound_message_id": "68bcc49e-3394-4ff2-a7c3-40d35d5ad3a3",
+        "outbound_message_id": "ac85f8c9-5612-47a8-83ee-e6bd8e1bf24e",
+        "reply_text": "Atualmente a FC VIP nao oferece equipamentos de audio (microfones, lapela, interface, boom ou mesa de som). Trabalhamos apenas com estrutura fotografica e iluminacao",
+        "llm_status": "completed",
+        "llm_model": "qwen2.5:1.5b-instruct",
+        "dispatch_status": "request_failed",
+        "request_latency_seconds": 20.004
+      }
+    },
+    {
+      "case": {
+        "id": "new_audio_2",
+        "category": "audio",
+        "text": "posso usar lapela de voces no estudio?",
+        "expected": "generic_model"
+      },
+      "status": "ok",
+      "error": "",
+      "passed": true,
+      "issues": [],
+      "result": {
+        "external_message_id": "wamid.prod.cli.20260416115140.dacec4a5",
+        "inbound_message_id": "3943441e-e345-4979-95fe-0c2ef2a74ad4",
+        "outbound_message_id": "941ebded-aab6-413d-b829-fef1f7adc6d9",
+        "reply_text": "Atualmente a FC VIP nao oferece equipamentos de audio (microfones, lapela, interface, boom ou mesa de som). Trabalhamos apenas com estrutura fotografica e iluminacao",
+        "llm_status": "completed",
+        "llm_model": "qwen2.5:0.5b-instruct",
+        "dispatch_status": "request_failed",
+        "request_latency_seconds": 5.834
+      }
+    },
+    {
+      "case": {
+        "id": "new_generic_1",
+        "category": "generic",
+        "text": "sou novo cliente, como funciona para reservar e pagar?",
+        "expected": "generic_model"
+      },
+      "status": "ok",
+      "error": "",
+      "passed": false,
+      "issues": [
+        "unexpected_rule_model=rule_schedule_site_only"
+      ],
+      "result": {
+        "external_message_id": "wamid.prod.cli.20260416115146.5cd12c88",
+        "inbound_message_id": "a40a17b1-b937-467c-ab75-916e66fccf8b",
+        "outbound_message_id": "f2bc4a38-0017-4986-b948-4eab0c559530",
+        "reply_text": "O agendamento e feito totalmente pelo nosso site, mas ele e super intuitivo, tenho certeza que voce conseguira agendar de forma facil e simples! Nao consigo confirmar horario manualmente por aqui.\n\nAgendamento pelo site: https://www.fcvip.com.br/formulario",
+        "llm_status": "completed",
+        "llm_model": "rule_schedule_site_only",
+        "dispatch_status": "request_failed",
+        "request_latency_seconds": 2.966
+      }
+    }
+  ]
+}

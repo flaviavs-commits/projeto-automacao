@@ -36,6 +36,7 @@ Interrompa o fluxo e encaminhe para atendimento humano se houver:
 ## 3) Base de conhecimento e limitacoes
 
 - Capacidade maxima: ate 3 pessoas sendo fotografadas/filmadas e ate 2 profissionais tecnicos.
+- Endereco oficial: Rua Corifeu Marques, 32 - Jardim Amalia - Volta Redonda/RJ.
 - Estacionamento: realizado na via publica (rua).
 - Acesso: exclusivamente por escadas.
 - Atrasos: ha 15 minutos de tolerancia para organizar equipamentos e cenario. Em caso de atraso na chegada, esse tempo sera comprometido e deduzido da locacao, pois o horario de termino nao e prorrogado (ver Termos e Condicoes).

@@ -1249,3 +1249,140 @@ Principais falhas:
 
 Observacao tecnica:
 - O classificador de `paid_changes` ainda conflita com regra de agendamento em algumas frases (ex.: "trocar horario apos pagamento"), desviando para `rule_schedule_site_only` em vez de `rule_human_handoff`.
+
+## Registro de task - 2026-04-16 (patch abrangente para falhas do stress test de locacao)
+
+Task executada: aplicar correcao estrutural no pipeline de resposta para resolver as falhas recorrentes do stress test sem depender de mapeamento por frase.
+
+Alteracoes aplicadas:
+- `app/services/llm_reply_service.py`:
+  - reforco do classificador de handoff para cancelamento/reagendamento pago:
+    - ampliacao de marcadores de pagamento (`reserva paga`, `ja esta pago`, `depois de pagar`, etc.);
+    - suporte a variacoes textuais de troca de data/horario (regex sem depender de frase exata).
+  - reforco da deteccao de grupos acima do limite:
+    - cobre padroes como `somos 6` mesmo sem a palavra `pessoas`;
+    - mantem deteccao por tokens explicitos (`pessoas`, `equipe`, `integrantes`, etc.).
+  - guardrails pos-LLM para manter aderencia de dominio em categorias criticas:
+    - localizacao/acesso: se a resposta nao trouxer referencia oficial, aplica resposta de politica oficial;
+    - audio: se a resposta nao trouxer restricao negativa clara, aplica resposta oficial sem prometer equipamento.
+  - melhoria de qualidade para detectar disclaimers de IA mais cedo e reduzir respostas fora de escopo.
+  - ajuste do roteamento de CTA para follow-up com memoria/contexto (mantendo regra de nao repetir link sem necessidade).
+
+- `tests/test_llm_reply_service.py`:
+  - novos testes para:
+    - handoff em `paid_changes` com variacoes de linguagem;
+    - handoff em `>5 pessoas` com padrao `somos N`;
+    - guardrails de localizacao e audio;
+    - validacao de retorno de CTA por tuple (`link`, `reason`).
+
+Validacao local:
+- `.venv\\Scripts\\python.exe -m unittest tests.test_llm_reply_service -v` -> `OK` (7 testes).
+- `.venv\\Scripts\\python.exe -m compileall app tests` -> `OK`.
+
+## Registro de task - 2026-04-16 (bateria de regressao derivada do stress 100 casos)
+
+Task executada: rodada de regressao com selecao orientada por falhas:
+- manter apenas 1 caso aprovado por categoria no baseline anterior;
+- repetir todos os casos reprovados;
+- adicionar novos casos de cobertura (paid_changes, risk_people, location, audio, generic e structure).
+
+Implementacao:
+- novo runner: `road_test/stress_locacao_regression_suite.py`
+  - usa ultimo `stress_locacao_*.json` como base;
+  - compoe automaticamente a bateria (`passed sample` + `failed repeat` + `new cases`);
+  - reaproveita o mesmo avaliador da suite original.
+
+Execucao:
+- comando: `python -u road_test/stress_locacao_regression_suite.py --app-secret <secret>`
+- entradas de selecao:
+  - `passed_sampled=10`
+  - `failed_repeated=23`
+  - `new_cases=10`
+  - `total_selected=43`
+- saidas:
+  - `.qa_tmp/stress_locacao_regression_20260416_114416.json`
+  - `.qa_tmp/stress_locacao_regression_20260416_114416.md`
+
+Resultado agregado:
+- total: 43
+- aprovados: 11
+- reprovados: 32
+- taxa de acerto: 25.58%
+
+Principais falhas:
+- `location_missing_official_reference` (11)
+- `missing_handoff_text` (10)
+- `audio_missing_negative_constraint` (8)
+- `expected_model=rule_human_handoff got=rule_schedule_site_only` (5)
+- `expected_model=rule_human_handoff got=qwen2.5:0.5b-instruct` (5)
+
+## Registro de task - 2026-04-16 (deploy producao + reexecucao regressao)
+
+Task executada: deploy das correcoes de LLM para `projeto-automacao` e `worker`, seguido de nova execucao da mesma bateria de regressao.
+
+Deploy:
+- `railway up -s projeto-automacao -d` -> deployment `fd45bfa7-c5ea-4257-81d3-0abd488c8c95` (`SUCCESS`)
+- `railway up -s worker -d` -> deployment `6797eae3-a2ec-4d4e-a921-77123e1c022b` (`SUCCESS`)
+
+Reexecucao da regressao:
+- comando: `python -u road_test/stress_locacao_regression_suite.py --app-secret <secret>`
+- saidas:
+  - `.qa_tmp/stress_locacao_regression_20260416_115149.json`
+  - `.qa_tmp/stress_locacao_regression_20260416_115149.md`
+
+Resultado agregado (pos-deploy):
+- total: 42
+- aprovados: 39
+- reprovados: 3
+- taxa de acerto: 92.86%
+
+Comparativo direto:
+- antes do deploy: 25.58% (11/43)
+- depois do deploy: 92.86% (39/42)
+
+Falhas residuais:
+- `location_missing_official_reference` (1)
+- `audio_answer_missing_topic` (1)
+- `unexpected_rule_model=rule_schedule_site_only` (1)
+
+## Registro de task - 2026-04-16 (patch final dos 3 casos residuais + regressao)
+
+Task executada: correcao final dos 3 casos residuais da regressao pos-deploy e nova validacao em producao.
+
+Ajustes aplicados:
+- `app/services/llm_reply_service.py`:
+  - localizacao: ampliado detector de pergunta com termos de ambiguidade (`rua ou em shopping`, `fica na rua`, `shopping`);
+  - audio: endurecida validacao de conformidade para evitar falso positivo em resposta tecnica fora de contexto (`interface` isolado nao valida politica de audio);
+  - agendamento: `rule_schedule_site_only` passou a exigir pedido explicito de horario/disponibilidade, evitando capturar pergunta exploratoria de onboarding (`como funciona para reservar e pagar`).
+- `tests/test_llm_reply_service.py`:
+  - novos testes para shopping/location, audio tecnico sem contexto e deteccao explicita de agendamento.
+
+Validacao local:
+- `.venv\\Scripts\\python.exe -m unittest tests.test_llm_reply_service -v` -> `OK` (12 testes).
+
+Deploy:
+- `railway up -s projeto-automacao -d` -> deployment `155cb201-1c7b-4a93-96a8-456396a21319` (`SUCCESS`)
+- `railway up -s worker -d` -> deployment `ae8cf8f5-d6cc-444c-b1cc-ae06f4e6945e` (`SUCCESS`)
+
+Regressao pos-patch final:
+- comando: `python -u road_test/stress_locacao_regression_suite.py --app-secret <secret>`
+- saidas:
+  - `.qa_tmp/stress_locacao_regression_20260416_121313.json`
+  - `.qa_tmp/stress_locacao_regression_20260416_121313.md`
+- resultado:
+  - total: 19
+  - aprovados: 19
+  - reprovados: 0
+  - taxa: 100.0%
+
+Validacao complementar (baseline completo da regressao inicial):
+- comando:
+  - `python -u road_test/stress_locacao_regression_suite.py --previous-report .qa_tmp/stress_locacao_regression_20260416_114416.json --app-secret <secret>`
+- saidas:
+  - `.qa_tmp/stress_locacao_regression_20260416_121807.json`
+  - `.qa_tmp/stress_locacao_regression_20260416_121807.md`
+- resultado:
+  - total: 42
+  - aprovados: 42
+  - reprovados: 0
+  - taxa: 100.0%

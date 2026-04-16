@@ -100,16 +100,30 @@ class LLMReplyService(BaseExternalService):
         "reagendamento",
         "remarcar",
         "trocar horario",
+        "trocar data",
+        "trocar dia",
         "trocar horário",
         "mudar horario",
+        "mudar data",
+        "mudar dia",
+        "alterar horario",
+        "alterar data",
         "mudar horário",
     }
     _PAID_MARKERS = {
         "ja paguei",
         "já paguei",
         "pago",
+        "paga",
         "pagamento",
         "paguei",
+        "ja esta pago",
+        "ja foi pago",
+        "reserva paga",
+        "reserva ja paga",
+        "horario pago",
+        "apos pagamento",
+        "depois de pagar",
     }
 
     _INTENT_SCHEDULE_KEYWORDS = {
@@ -122,6 +136,29 @@ class LLMReplyService(BaseExternalService):
         "disponibilidade",
         "agenda",
         "vaga",
+    }
+    _SCHEDULE_EXPLORATORY_MARKERS = {
+        "como funciona",
+        "sou novo cliente",
+        "primeira vez",
+        "quero entender",
+        "me explica",
+    }
+    _SCHEDULE_AVAILABILITY_MARKERS = {
+        "disponibilidade",
+        "horario",
+        "data",
+        "vaga",
+        "agenda",
+        "amanha",
+        "hoje",
+        "segunda",
+        "terca",
+        "quarta",
+        "quinta",
+        "sexta",
+        "sabado",
+        "domingo",
     }
     _INTENT_DISCOVER_KEYWORDS = {
         "conhecer",
@@ -174,10 +211,59 @@ class LLMReplyService(BaseExternalService):
         "como ia",
         "como modelo",
         "como assistente virtual",
+        "como assistente de inteligencia artificial",
         "nao tenho acesso",
+        "nao tenho acesso a informacoes especificas",
         "nao posso acessar",
         "nao posso ajudar com isso",
         "nao consigo ajudar com isso",
+    }
+    _LOCATION_TOPIC_KEYWORDS = {
+        "onde fica",
+        "qual endereco",
+        "endereco",
+        "bairro",
+        "como chego",
+        "como chegar",
+        "acesso",
+        "estacionamento",
+        "parar carro",
+        "elevador",
+        "escada",
+        "facil acesso",
+        "localizacao",
+        "rua ou em shopping",
+        "fica na rua",
+        "shopping",
+    }
+    _LOCATION_OFFICIAL_PRIMARY_MARKERS = {"corifeu", "corifeu marques"}
+    _LOCATION_OFFICIAL_CONTEXT_MARKERS = {"jardim amalia", "volta redonda", "rj", "rio de janeiro"}
+    _AUDIO_TOPIC_KEYWORDS = {
+        "audio",
+        "microfone",
+        "microfones",
+        "lapela",
+        "mesa de som",
+        "boom",
+        "shotgun",
+        "interface de audio",
+        "interface",
+    }
+    _AUDIO_NEGATIVE_MARKERS = {
+        "nao",
+        "sem",
+        "nao possui",
+        "nao oferecemos",
+        "nao trabalhamos",
+    }
+    _AUDIO_POLICY_CONTEXT_MARKERS = {
+        "equipamentos de audio",
+        "microfone",
+        "lapela",
+        "interface de audio",
+        "boom",
+        "mesa de som",
+        "estrutura fotografica",
     }
     def generate_reply(
         self,
@@ -234,7 +320,7 @@ class LLMReplyService(BaseExternalService):
 
         cta_link, cta_reason = self._select_cta_link(cleaned_user_text, context_messages, key_memories)
 
-        if cta_reason == "agendar":
+        if cta_reason == "agendar" and self._is_explicit_schedule_request(cleaned_user_text):
             requested_model = str(model_override or settings.llm_model).strip() or "unknown"
             schedule_reply = (
                 "O agendamento e feito totalmente pelo nosso site, mas ele e super intuitivo, "
@@ -341,7 +427,11 @@ class LLMReplyService(BaseExternalService):
                 quality_retry_status = "fallback_failed"
 
         sanitized_reply = self._sanitize_identity_hallucination(selected_reply)
-        reply_text = self._ensure_final_cta(sanitized_reply, cta_link, cta_reason)
+        policy_aligned_reply = self._apply_domain_policy_guards(
+            user_text=cleaned_user_text,
+            reply_text=sanitized_reply,
+        )
+        reply_text = self._ensure_final_cta(policy_aligned_reply, cta_link, cta_reason)
 
         return ExternalServiceResult(
             status="completed",
@@ -633,13 +723,23 @@ class LLMReplyService(BaseExternalService):
         asked_schedule = any(keyword in normalized_user for keyword in self._INTENT_SCHEDULE_KEYWORDS)
         asked_values = any(keyword in normalized_user for keyword in self._VALUE_KEYWORDS)
         asked_tour = any(keyword in normalized_user for keyword in self._TOUR_KEYWORDS)
+        is_follow_up = self._looks_like_follow_up(normalized_user)
+        inferred_intent = self._infer_intent(user_text, recent_text, key_memories, customer_status)
+
+        if not asked_schedule and inferred_intent == "agendar" and is_follow_up:
+            asked_schedule = True
+        inferred_discover_follow_up = inferred_intent == "conhecer" and (
+            is_follow_up or "ver" in normalized_user or "conhecer" in normalized_user
+        )
 
         if asked_schedule:
             if customer_status == "antigo":
                 return self._LINK_OLD_SCHEDULE, "agendar"
             return self._LINK_NEW_SCHEDULE, "agendar"
 
-        if asked_tour:
+        if asked_tour or inferred_discover_follow_up:
+            if self._has_any_known_link(recent_haystack):
+                return None, None
             return self._LINK_NEW_DISCOVER, "tour"
 
         if asked_values:
@@ -715,6 +815,21 @@ class LLMReplyService(BaseExternalService):
             return True
         return False
 
+    def _is_explicit_schedule_request(self, user_text: str) -> bool:
+        normalized = self._normalize_for_quality(user_text)
+        if not normalized:
+            return False
+
+        has_booking_intent = any(keyword in normalized for keyword in self._INTENT_SCHEDULE_KEYWORDS)
+        has_availability_signal = any(marker in normalized for marker in self._SCHEDULE_AVAILABILITY_MARKERS)
+        if not has_booking_intent and not has_availability_signal:
+            return False
+
+        has_exploratory_intent = any(marker in normalized for marker in self._SCHEDULE_EXPLORATORY_MARKERS)
+        if has_exploratory_intent and not has_availability_signal:
+            return False
+        return True
+
     def _detect_escalation_reason(self, user_text: str) -> str | None:
         normalized = self._normalize_for_quality(user_text)
         if not normalized:
@@ -723,9 +838,7 @@ class LLMReplyService(BaseExternalService):
         if any(keyword in normalized for keyword in self._RISK_CONTENT_KEYWORDS):
             return "uso de itens/efeitos que exigem avaliacao (ex.: sujeira, liquidos, fumaca, glitter, fogo ou animais)"
 
-        if any(keyword in normalized for keyword in self._CANCEL_RESCHEDULE_KEYWORDS) and any(
-            marker in normalized for marker in self._PAID_MARKERS
-        ):
+        if self._is_paid_change_request(normalized):
             return "cancelamento/reagendamento de horario ja pago"
 
         if self._mentions_more_than_five_people(normalized):
@@ -733,17 +846,58 @@ class LLMReplyService(BaseExternalService):
 
         return None
 
-    def _mentions_more_than_five_people(self, normalized_user_text: str) -> bool:
-        if not any(token in normalized_user_text for token in {"pessoa", "pessoas", "equipe", "gente"}):
+    def _is_paid_change_request(self, normalized_user_text: str) -> bool:
+        has_change_intent = any(keyword in normalized_user_text for keyword in self._CANCEL_RESCHEDULE_KEYWORDS)
+        if not has_change_intent:
+            has_change_intent = bool(
+                re.search(
+                    r"\b(?:trocar|mudar|alterar)\b(?:\s+\w+){0,3}\s+\b(?:dia|data|horario|reserva)\b",
+                    normalized_user_text,
+                )
+            )
+        if not has_change_intent:
             return False
+        return any(marker in normalized_user_text for marker in self._PAID_MARKERS)
+
+    def _mentions_more_than_five_people(self, normalized_user_text: str) -> bool:
+        explicit_over_limit_markers = {
+            "mais de 5 pessoas",
+            "mais que 5 pessoas",
+            "acima de 5 pessoas",
+        }
+        if any(marker in normalized_user_text for marker in explicit_over_limit_markers):
+            return True
+
         matches = re.findall(r"\b(\d{1,2})\b", normalized_user_text)
-        for item in matches[:6]:
+        numeric_values: list[int] = []
+        for item in matches[:8]:
             try:
-                value = int(item)
+                numeric_values.append(int(item))
             except ValueError:
                 continue
-            if value >= 6:
-                return True
+
+        if not numeric_values:
+            return False
+
+        has_people_tokens = any(
+            token in normalized_user_text
+            for token in {"pessoa", "pessoas", "equipe", "gente", "integrante", "membro"}
+        )
+        if has_people_tokens and any(value >= 6 for value in numeric_values):
+            return True
+
+        group_size_patterns = (
+            r"\b(?:somos|seremos|vamos|iremos|estaremos|grupo de|equipe com|time com)\s*(?:em\s*)?(\d{1,2})\b",
+            r"\b(\d{1,2})\s*(?:integrantes?|membros?)\b",
+        )
+        for pattern in group_size_patterns:
+            for raw_value in re.findall(pattern, normalized_user_text):
+                try:
+                    value = int(raw_value)
+                except ValueError:
+                    continue
+                if value >= 6:
+                    return True
         return False
 
 
@@ -789,6 +943,48 @@ class LLMReplyService(BaseExternalService):
         if any(token in normalized for token in banned_tokens):
             return "Eu sou o Agente FC VIP. Posso te ajudar com atendimento, horarios e agendamento."
         return reply_text
+
+    def _apply_domain_policy_guards(self, *, user_text: str, reply_text: str) -> str:
+        normalized_user = self._normalize_for_quality(user_text)
+        normalized_reply = self._normalize_for_quality(reply_text)
+
+        if self._is_location_question(normalized_user) and not self._has_official_location_reference(normalized_reply):
+            return self._build_location_policy_reply()
+
+        if self._is_audio_question(normalized_user) and not self._is_audio_policy_compliant(normalized_reply):
+            return self._build_audio_policy_reply()
+
+        return reply_text
+
+    def _is_location_question(self, normalized_user_text: str) -> bool:
+        return any(keyword in normalized_user_text for keyword in self._LOCATION_TOPIC_KEYWORDS)
+
+    def _has_official_location_reference(self, normalized_reply_text: str) -> bool:
+        has_primary = any(token in normalized_reply_text for token in self._LOCATION_OFFICIAL_PRIMARY_MARKERS)
+        has_context = any(token in normalized_reply_text for token in self._LOCATION_OFFICIAL_CONTEXT_MARKERS)
+        return has_primary and has_context
+
+    def _build_location_policy_reply(self) -> str:
+        return (
+            "O estudio fica na Rua Corifeu Marques, 32 - Jardim Amalia, Volta Redonda/RJ. "
+            "O estacionamento e na via publica (rua) e o acesso ao estudio e por escadas."
+        )
+
+    def _is_audio_question(self, normalized_user_text: str) -> bool:
+        return any(keyword in normalized_user_text for keyword in self._AUDIO_TOPIC_KEYWORDS)
+
+    def _is_audio_policy_compliant(self, normalized_reply_text: str) -> bool:
+        has_topic = "audio" in normalized_reply_text or "microfone" in normalized_reply_text
+        has_negative_constraint = any(marker in normalized_reply_text for marker in self._AUDIO_NEGATIVE_MARKERS)
+        has_policy_context = any(marker in normalized_reply_text for marker in self._AUDIO_POLICY_CONTEXT_MARKERS)
+        return has_topic and has_negative_constraint and has_policy_context
+
+    def _build_audio_policy_reply(self) -> str:
+        return (
+            "Atualmente a FC VIP nao oferece equipamentos de audio "
+            "(microfones, lapela, interface, boom ou mesa de som). "
+            "Trabalhamos apenas com estrutura fotografica e iluminacao."
+        )
 
     def _extract_reply_text(self, body: Any) -> str:
         if isinstance(body, dict):
