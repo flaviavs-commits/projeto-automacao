@@ -164,7 +164,7 @@ celery -A app.workers.celery_app.celery_app worker --loglevel=info
 
 - O projeto foi direcionado para respostas via LLM local/open source (sem dependencia de token externo).
 - Integracao atual espera endpoint compativel com Ollama em `LLM_BASE_URL` (padrao: `http://127.0.0.1:11434`).
-- Modelo padrao de configuracao: `qwen2.5:7b-instruct` (ajustavel por `LLM_MODEL`).
+- Modelo padrao de configuracao: `qwen2.5:0.5b-instruct` (ajustavel por `LLM_MODEL`).
 - O lock de dominio e aplicado por `LLM_DOMAIN_LOCK=true`, restringindo o atendimento para estudio e agendamento.
 - O contexto efetivo para conversa e retomada e de `3-5` mensagens recentes (controlado por `LLM_CONTEXT_MESSAGES`, default `5`).
 - A tolerancia a desvios leves pode ser calibrada por `LLM_OFFTOPIC_TOLERANCE_TURNS` (default `2`), mantendo redirecionamento ao tema do estudio.
@@ -172,9 +172,14 @@ celery -A app.workers.celery_app.celery_app worker --loglevel=info
 - O arquivo `app/prompts/studio_agendamento.md` foi estruturado para o atendimento comercial FC VIP, com prompt final, regras, exemplos, anti-desvio, conversao e fallback humano.
 - Para road test multi-modelo, configure `LLM_TEST_MODELS` com a lista CSV dos modelos disponiveis no runtime local.
 - Para qualidade comercial com latencia controlada, mantenha `LLM_MODEL` em modelo leve e habilite:
-  - `LLM_QUALITY_RETRY_ENABLED=true`
-  - `LLM_QUALITY_FALLBACK_MODEL` para um modelo mais forte (ex.: `qwen2.5:1.5b-instruct`)
-  - `LLM_QUALITY_MIN_CHARS` para acionar retry quando a resposta vier curta/generica.
+- `LLM_QUALITY_RETRY_ENABLED=true`
+- `LLM_QUALITY_FALLBACK_MODEL` para um modelo mais forte (ex.: `qwen2.5:1.5b-instruct`)
+- `LLM_QUALITY_MIN_CHARS` para acionar retry quando a resposta vier curta/generica.
+- Para reduzir custo/tokens por chamada, ajuste:
+  - `LLM_KNOWLEDGE_MAX_CHARS` (recomendado `3000-5000`)
+  - `LLM_KNOWLEDGE_MAX_SECTIONS` (recomendado `2-4`)
+  - `LLM_PROMPT_MAX_CONTEXT_CHARS` (recomendado `500-800`)
+  - `LLM_MAX_KEY_MEMORIES` (recomendado `8-12`)
 
 ## LLM no Railway (servico separado)
 
@@ -193,19 +198,20 @@ Arquivos de deploy do runtime:
 Configuracao recomendada no `llm-runtime`:
 
 - volume em `/root/.ollama` (persistencia de modelos)
-- `LLM_MODEL=qwen2.5:1.5b-instruct`
-- `LLM_MODELS_TO_PULL=qwen2.5:1.5b-instruct,qwen2.5:0.5b-instruct`
+- `LLM_MODEL=qwen2.5:0.5b-instruct`
+- `LLM_MODELS_TO_PULL=qwen2.5:0.5b-instruct,qwen2.5:1.5b-instruct`
+- `LLM_PULL_POLICY=if_missing` (`never` para subir sem pull em boot, quando o volume ja tem modelos)
 - `OLLAMA_HOST=0.0.0.0:11434`
 - `OLLAMA_NUM_PARALLEL=1`
 - `OLLAMA_MAX_LOADED_MODELS=1`
-- `OLLAMA_KEEP_ALIVE=15m`
+- `OLLAMA_KEEP_ALIVE=8m`
 
 Configuracao da API e worker para usar o runtime interno:
 
 - `LLM_BASE_URL=http://llm-runtime.railway.internal:11434`
 - `LLM_ENABLED=true`
 - `LLM_PROVIDER=ollama`
-- `LLM_MODEL=qwen2.5:1.5b-instruct`
+- `LLM_MODEL=qwen2.5:0.5b-instruct`
 
 Observacao:
 
@@ -266,6 +272,12 @@ road_test\chat_railway_prod.cmd --phone-number-id 1234567890 --once "teste com d
 
 ```cmd
 road_test\chat_railway_prod.cmd --app-secret SEU_META_APP_SECRET --once "teste assinado"
+```
+
+- Bateria online de 100 testes guiada pelos erros mais frequentes do ultimo stress:
+
+```cmd
+.venv\Scripts\python.exe -u road_test\stress_locacao_error_guided_online.py --app-secret SEU_META_APP_SECRET
 ```
 
 - Observacao de rede:

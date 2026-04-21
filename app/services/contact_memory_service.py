@@ -102,6 +102,15 @@ class ContactMemoryService:
         r"\b(?:moro em|sou de|vim de|resido em)\s+([A-Za-z\u00C0-\u00FF][A-Za-z\u00C0-\u00FF'\- ]{1,60})\b",
         flags=re.IGNORECASE,
     )
+    _INSTAGRAM_RE = re.compile(r"@([A-Za-z0-9._]{2,30})", flags=re.IGNORECASE)
+    _PROFILE_MARKERS = {
+        "fotografo": "fotografo",
+        "fotografa": "fotografo",
+        "videomaker": "videomaker",
+        "modelo": "modelo",
+        "locacao": "locacao",
+        "locar": "locacao",
+    }
 
     def save_from_inbound_text(
         self,
@@ -178,6 +187,14 @@ class ContactMemoryService:
         name_candidate = self._extract_name(original_text, normalized_text)
         if name_candidate:
             candidates.append(name_candidate)
+
+        instagram_candidate = self._extract_instagram_handle(original_text)
+        if instagram_candidate:
+            candidates.append(instagram_candidate)
+
+        profile_candidate = self._extract_customer_profile(normalized_text)
+        if profile_candidate:
+            candidates.append(profile_candidate)
 
         location_candidate = self._extract_location(original_text)
         if location_candidate:
@@ -467,3 +484,28 @@ class ContactMemoryService:
             "importance": 3,
             "confidence": 0.82,
         }
+
+    def _extract_instagram_handle(self, original_text: str) -> dict | None:
+        match = self._INSTAGRAM_RE.search(original_text or "")
+        if not match:
+            return None
+        raw = str(match.group(1) or "").strip(" .")
+        if not raw:
+            return None
+        return {
+            "memory_key": "instagram_cliente",
+            "memory_value": f"@{raw.lower()}",
+            "importance": 4,
+            "confidence": 0.9,
+        }
+
+    def _extract_customer_profile(self, normalized_text: str) -> dict | None:
+        for marker, profile in self._PROFILE_MARKERS.items():
+            if marker in normalized_text:
+                return {
+                    "memory_key": "perfil_cliente",
+                    "memory_value": profile,
+                    "importance": 4,
+                    "confidence": 0.86,
+                }
+        return None

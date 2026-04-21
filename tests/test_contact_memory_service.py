@@ -34,6 +34,14 @@ class ContactMemoryServiceTests(unittest.TestCase):
         self.assertEqual(result.get("status"), "ignored_ambiguous")
         self.assertEqual(result.get("candidates"), [])
 
+    def test_extracts_instagram_and_profile(self) -> None:
+        result = self.service.analyze_text("Sou fotografo e meu insta e @gabriel.fotos")
+        self.assertEqual(result.get("status"), "candidate_found")
+        candidates = result.get("candidates") or []
+        keys = {item.get("memory_key"): item.get("memory_value") for item in candidates}
+        self.assertEqual(keys.get("perfil_cliente"), "fotografo")
+        self.assertEqual(keys.get("instagram_cliente"), "@gabriel.fotos")
+
 
 if __name__ == "__main__":
     unittest.main()

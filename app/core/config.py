@@ -56,13 +56,15 @@ class Settings(BaseSettings):
     llm_enabled: bool = Field(default=True, alias="LLM_ENABLED")
     llm_provider: str = Field(default="ollama", alias="LLM_PROVIDER")
     llm_base_url: str = Field(default="http://127.0.0.1:11434", alias="LLM_BASE_URL")
-    llm_model: str = Field(default="qwen2.5:7b-instruct", alias="LLM_MODEL")
-    llm_temperature: float = Field(default=0.25, alias="LLM_TEMPERATURE")
-    llm_max_output_tokens: int = Field(default=220, alias="LLM_MAX_OUTPUT_TOKENS")
-    llm_timeout_seconds: float = Field(default=90.0, alias="LLM_TIMEOUT_SECONDS")
-    llm_num_ctx: int = Field(default=1024, alias="LLM_NUM_CTX")
-    llm_num_thread: int = Field(default=4, alias="LLM_NUM_THREAD")
-    llm_keep_alive: str = Field(default="10m", alias="LLM_KEEP_ALIVE")
+    llm_model: str = Field(default="qwen2.5:0.5b-instruct", alias="LLM_MODEL")
+    llm_temperature: float = Field(default=0.2, alias="LLM_TEMPERATURE")
+    llm_max_output_tokens: int = Field(default=160, alias="LLM_MAX_OUTPUT_TOKENS")
+    llm_timeout_seconds: float = Field(default=45.0, alias="LLM_TIMEOUT_SECONDS")
+    llm_num_ctx: int = Field(default=768, alias="LLM_NUM_CTX")
+    llm_num_thread: int = Field(default=2, alias="LLM_NUM_THREAD")
+    llm_keep_alive: str = Field(default="8m", alias="LLM_KEEP_ALIVE")
+    llm_business_open_hour: int = Field(default=9, alias="LLM_BUSINESS_OPEN_HOUR")
+    llm_business_close_hour: int = Field(default=22, alias="LLM_BUSINESS_CLOSE_HOUR")
     llm_context_messages: int = Field(default=5, alias="LLM_CONTEXT_MESSAGES")
     llm_offtopic_tolerance_turns: int = Field(default=2, alias="LLM_OFFTOPIC_TOLERANCE_TURNS")
     llm_domain_lock: bool = Field(default=True, alias="LLM_DOMAIN_LOCK")
@@ -71,8 +73,12 @@ class Settings(BaseSettings):
         alias="LLM_DOMAIN_DESCRIPTION",
     )
     llm_knowledge_path: str = Field(default="app/prompts/studio_agendamento.md", alias="LLM_KNOWLEDGE_PATH")
+    llm_knowledge_max_chars: int = Field(default=5000, alias="LLM_KNOWLEDGE_MAX_CHARS")
+    llm_knowledge_max_sections: int = Field(default=3, alias="LLM_KNOWLEDGE_MAX_SECTIONS")
+    llm_prompt_max_context_chars: int = Field(default=700, alias="LLM_PROMPT_MAX_CONTEXT_CHARS")
+    llm_max_key_memories: int = Field(default=12, alias="LLM_MAX_KEY_MEMORIES")
     llm_test_models: str = Field(
-        default="qwen2.5:1.5b-instruct,qwen2.5:7b-instruct,mistral-nemo:12b-instruct",
+        default="qwen2.5:0.5b-instruct,qwen2.5:1.5b-instruct",
         alias="LLM_TEST_MODELS",
     )
     llm_quality_retry_enabled: bool = Field(default=True, alias="LLM_QUALITY_RETRY_ENABLED")
@@ -80,7 +86,7 @@ class Settings(BaseSettings):
         default="qwen2.5:1.5b-instruct",
         alias="LLM_QUALITY_FALLBACK_MODEL",
     )
-    llm_quality_min_chars: int = Field(default=90, alias="LLM_QUALITY_MIN_CHARS")
+    llm_quality_min_chars: int = Field(default=80, alias="LLM_QUALITY_MIN_CHARS")
     local_storage_path: str = Field(default="storage", alias="LOCAL_STORAGE_PATH")
     log_level: str = Field(default="INFO", alias="LOG_LEVEL")
 

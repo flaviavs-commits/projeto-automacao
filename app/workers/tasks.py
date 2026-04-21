@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from uuid import UUID
 
 from sqlalchemy import func, select
@@ -23,6 +23,9 @@ from app.workers.celery_app import celery_app
 
 
 AUDIO_MESSAGE_TYPES = {"audio", "voice", "ptt"}
+SPAM_MESSAGE_THRESHOLD = 5
+SPAM_WINDOW_SECONDS = 10
+SPAM_COOLDOWN_SECONDS = 60
 
 
 def _legacy_qa_result(task_name: str, payload: dict | None = None) -> dict:
@@ -83,6 +86,44 @@ def _resolve_final_job_status(service_status: str) -> str:
     if service_status in {"request_failed"}:
         return "failed"
     return "completed"
+
+
+def _compute_spam_state(
+    *,
+    db,
+    conversation_id: UUID,
+    reference_time: datetime,
+) -> dict:
+    window_start = reference_time - timedelta(seconds=SPAM_WINDOW_SECONDS)
+    window_end = reference_time + timedelta(seconds=SPAM_WINDOW_SECONDS)
+    window_inbound_messages = (
+        db.execute(
+            select(Message)
+            .where(
+                Message.conversation_id == conversation_id,
+                Message.direction == "inbound",
+                Message.created_at >= window_start,
+                Message.created_at <= window_end,
+            )
+            .order_by(Message.created_at.desc())
+        )
+        .scalars()
+        .all()
+    )
+
+    latest_window_inbound = window_inbound_messages[0] if window_inbound_messages else None
+    burst_count = len(window_inbound_messages)
+    spam_active = burst_count > SPAM_MESSAGE_THRESHOLD
+    cooldown_until = None
+    if spam_active and latest_window_inbound is not None:
+        cooldown_until = latest_window_inbound.created_at + timedelta(seconds=SPAM_COOLDOWN_SECONDS)
+
+    return {
+        "burst_count": burst_count,
+        "latest_inbound_id": str(latest_window_inbound.id) if latest_window_inbound is not None else "",
+        "spam_active": spam_active,
+        "cooldown_until": cooldown_until,
+    }
 
 
 @celery_app.task(name="process_incoming_message")
@@ -224,26 +265,121 @@ def generate_reply(payload: dict) -> dict:
         source_message_id = str(payload.get("source_message_id") or "").strip() or None
         phone_number_id = str(payload.get("phone_number_id") or "").strip() or None
         now_utc = datetime.now(timezone.utc)
+        spam_retry_count = int(payload.get("spam_retry_count") or 0)
         dispatch_result: dict | None = None
         llm_result: dict | None = None
         reply_text: str | None = None
+        spam_notice: str | None = None
 
         with SessionLocal() as db:
             conversation = db.get(Conversation, conversation_id)
             if conversation is None:
                 raise ValueError(f"conversation not found: {conversation_id}")
             contact = db.get(Contact, conversation.contact_id)
+            source_message: Message | None = None
+            if source_message_id:
+                source_message_uuid = _parse_uuid(source_message_id, "source_message_id")
+                source_message = db.get(Message, source_message_uuid)
+                if source_message is None:
+                    raise ValueError(f"source_message not found: {source_message_id}")
             context = MemoryService().build_context(str(conversation.id))
+            key_memories = list(context.get("key_memories") or [])
+            if contact is not None:
+                if str(contact.name or "").strip():
+                    key_memories.append({"key": "nome_contato", "value": str(contact.name).strip()})
+                if str(contact.phone or "").strip():
+                    key_memories.append({"key": "telefone_contato", "value": str(contact.phone).strip()})
+
+            spam_reference_time = source_message.created_at if source_message is not None else now_utc
+            spam_state = _compute_spam_state(
+                db=db,
+                conversation_id=conversation.id,
+                reference_time=spam_reference_time,
+            )
+            latest_inbound_id = str(spam_state.get("latest_inbound_id") or "").strip()
+            if bool(spam_state.get("spam_active")) and source_message_id and latest_inbound_id:
+                if source_message_id != latest_inbound_id:
+                    db.add(
+                        AuditLog(
+                            entity_type="conversation",
+                            entity_id=conversation.id,
+                            event_type="spam_non_latest_ignored",
+                            details={
+                                "source_message_id": source_message_id,
+                                "latest_inbound_id": latest_inbound_id,
+                                "burst_count": spam_state.get("burst_count"),
+                            },
+                        )
+                    )
+                    db.commit()
+                    _finish_job(job_id, "completed")
+                    return {
+                        "task": "generate_reply",
+                        "status": "ignored_spam_non_latest",
+                        "job_id": str(job_id),
+                        "conversation_id": str(conversation_id),
+                        "source_message_id": source_message_id,
+                        "latest_inbound_id": latest_inbound_id,
+                    }
+
+            if bool(spam_state.get("spam_active")) and latest_inbound_id:
+                latest_inbound_uuid = _parse_uuid(latest_inbound_id, "latest_inbound_id")
+                latest_inbound_message = db.get(Message, latest_inbound_uuid)
+                if latest_inbound_message is not None:
+                    source_message_id = latest_inbound_id
+                    source_text = (latest_inbound_message.transcription or latest_inbound_message.text_content or "").strip() or source_text
+
+                cooldown_until = spam_state.get("cooldown_until")
+                if isinstance(cooldown_until, datetime) and now_utc < cooldown_until and spam_retry_count < 1:
+                    remaining_seconds = max(1, int((cooldown_until - now_utc).total_seconds()))
+                    retry_payload = {
+                        **payload,
+                        "source_message_id": source_message_id,
+                        "source_text": source_text,
+                        "spam_retry_count": spam_retry_count + 1,
+                    }
+                    generate_reply.apply_async(args=[retry_payload], countdown=remaining_seconds)
+                    db.add(
+                        AuditLog(
+                            entity_type="conversation",
+                            entity_id=conversation.id,
+                            event_type="spam_cooldown_scheduled",
+                            details={
+                                "source_message_id": source_message_id,
+                                "latest_inbound_id": latest_inbound_id,
+                                "burst_count": spam_state.get("burst_count"),
+                                "retry_in_seconds": remaining_seconds,
+                                "spam_retry_count": spam_retry_count + 1,
+                            },
+                        )
+                    )
+                    db.commit()
+                    _finish_job(job_id, "completed")
+                    return {
+                        "task": "generate_reply",
+                        "status": "deferred_spam_cooldown",
+                        "job_id": str(job_id),
+                        "conversation_id": str(conversation_id),
+                        "retry_in_seconds": remaining_seconds,
+                        "burst_count": spam_state.get("burst_count"),
+                    }
+
+                spam_notice = (
+                    "Detectamos alta atividade em curto intervalo e, para preservar desempenho, "
+                    "responderei apenas a sua ultima mensagem."
+                )
 
             llm_result = LLMReplyService().generate_reply(
                 user_text=source_text,
                 context_messages=context.get("memory_items") or [],
-                key_memories=context.get("key_memories") or [],
+                key_memories=key_memories,
             )
             llm_status = str((llm_result or {}).get("status") or "")
             reply_text = str((llm_result or {}).get("reply_text") or "").strip()
             if llm_status not in {"completed", "blocked_out_of_scope"} or not reply_text:
                 raise RuntimeError(f"llm_reply_generation_failed: status={llm_status}")
+            if spam_notice:
+                reply_text = f"{spam_notice}\n\n{reply_text}".strip()
 
             outbound = Message(
                 conversation_id=conversation.id,

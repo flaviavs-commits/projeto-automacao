@@ -107,6 +107,80 @@ class LLMReplyServiceTests(unittest.TestCase):
         is_explicit = self.service._is_explicit_schedule_request("quero reservar sexta as 18h")  # noqa: SLF001
         self.assertTrue(is_explicit)
 
+    def test_explicit_schedule_request_accepts_time_range_without_keyword(self) -> None:
+        is_explicit = self.service._is_explicit_schedule_request("precisava de 7 as 9h pode ser?")  # noqa: SLF001
+        self.assertTrue(is_explicit)
+
+    def test_generate_reply_schedule_out_of_business_hours(self) -> None:
+        result = self.service.generate_reply(
+            user_text="quero agendar das 7h as 9h, pode ser?",
+            context_messages=[],
+            key_memories=[],
+        )
+        self.assertEqual(result.get("model"), "rule_schedule_site_only")
+        normalized_reply = self.service._normalize_for_quality(str(result.get("reply_text") or ""))  # noqa: SLF001
+        self.assertIn("nesse horario nao trabalhamos", normalized_reply)
+        self.assertIn("fcvip.com.br", normalized_reply)
+
+    def test_generate_reply_values_are_routed_to_site(self) -> None:
+        result = self.service.generate_reply(
+            user_text="qual o valor de 2h no estudio?",
+            context_messages=[],
+            key_memories=[],
+        )
+        self.assertEqual(result.get("model"), "rule_values_site_only")
+        normalized_reply = self.service._normalize_for_quality(str(result.get("reply_text") or ""))  # noqa: SLF001
+        self.assertIn("pacotes e valores", normalized_reply)
+        self.assertIn("fcvip.com.br", normalized_reply)
+
+    def test_generate_reply_personal_question_redirects_to_domain(self) -> None:
+        result = self.service.generate_reply(
+            user_text="voce e casada?",
+            context_messages=[],
+            key_memories=[],
+        )
+        self.assertEqual(result.get("model"), "rule_domain_redirect")
+        normalized_reply = self.service._normalize_for_quality(str(result.get("reply_text") or ""))  # noqa: SLF001
+        self.assertIn("foco no atendimento do estudio", normalized_reply)
+
+    def test_generate_reply_visit_experience_feedback_prompt(self) -> None:
+        result = self.service.generate_reply(
+            user_text="fui ai na sexta e queria te contar",
+            context_messages=[],
+            key_memories=[],
+        )
+        self.assertEqual(result.get("model"), "rule_visit_feedback")
+        normalized_reply = self.service._normalize_for_quality(str(result.get("reply_text") or ""))  # noqa: SLF001
+        self.assertIn("qual nota de 0 a 10", normalized_reply)
+
+    def test_generate_reply_appends_contact_intake_when_name_missing(self) -> None:
+        reply_text = self.service._append_contact_intake_if_needed(  # noqa: SLF001
+            reply_text="Posso te ajudar com valores e horarios.",
+            user_text="qual o valor de 2h?",
+            key_memories=[],
+        )
+        normalized_reply = self.service._normalize_for_quality(reply_text)  # noqa: SLF001
+        self.assertIn("nome completo", normalized_reply)
+        self.assertIn("instagram", normalized_reply)
+
+    def test_generate_reply_does_not_append_contact_intake_when_name_known(self) -> None:
+        reply_text = self.service._append_contact_intake_if_needed(  # noqa: SLF001
+            reply_text="Posso te ajudar com valores e horarios.",
+            user_text="qual o valor de 2h?",
+            key_memories=[{"key": "nome_contato", "value": "Gabriel"}],
+        )
+        normalized_reply = self.service._normalize_for_quality(reply_text)  # noqa: SLF001
+        self.assertNotIn("nome completo", normalized_reply)
+
+    def test_sanitize_low_quality_reply_for_values_intent(self) -> None:
+        sanitized = self.service._sanitize_low_quality_reply(  # noqa: SLF001
+            user_text="qual valor de 2h?",
+            reply_text="Como assistente virtual, nao tenho acesso a informacoes especificas.",
+        )
+        normalized = self.service._normalize_for_quality(sanitized)  # noqa: SLF001
+        self.assertIn("pacotes", normalized)
+        self.assertIn("site oficial", normalized)
+
 
 if __name__ == "__main__":
     unittest.main()

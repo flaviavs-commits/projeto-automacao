@@ -3,6 +3,7 @@ from __future__ import annotations
 import re
 import sys
 import unicodedata
+from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
@@ -235,6 +236,8 @@ class LLMReplyService(BaseExternalService):
         "rua ou em shopping",
         "fica na rua",
         "shopping",
+        "volta redonda",
+        "fica em volta redonda",
     }
     _LOCATION_OFFICIAL_PRIMARY_MARKERS = {"corifeu", "corifeu marques"}
     _LOCATION_OFFICIAL_CONTEXT_MARKERS = {"jardim amalia", "volta redonda", "rj", "rio de janeiro"}
@@ -258,12 +261,109 @@ class LLMReplyService(BaseExternalService):
     }
     _AUDIO_POLICY_CONTEXT_MARKERS = {
         "equipamentos de audio",
-        "microfone",
-        "lapela",
-        "interface de audio",
-        "boom",
-        "mesa de som",
         "estrutura fotografica",
+        "iluminacao",
+    }
+    _PERSONAL_QUESTION_MARKERS = {
+        "voce e casada",
+        "voce e casado",
+        "vc e casada",
+        "vc e casado",
+        "voce namora",
+        "voce tem namorado",
+        "voce tem namorada",
+        "quantos anos voce tem",
+        "onde voce mora",
+    }
+    _PROFANITY_MARKERS = {
+        "foder",
+        "fude",
+        "fuder",
+        "fuck",
+        "fdp",
+        "caralho",
+        "porra",
+        "vai tomar no cu",
+        "se fuder",
+        "se fode",
+    }
+    _VISIT_EXPERIENCE_MARKERS = {
+        "fui ai",
+        "fui no estudio",
+        "fui ao estudio",
+        "estive ai",
+        "estive no estudio",
+        "passei ai",
+        "fui ai na sexta",
+        "fui ai no sabado",
+        "fui ai ontem",
+    }
+    _CONTACT_INTAKE_HINTS = {
+        "nome completo",
+        "@ do instagram",
+        "arroba do instagram",
+        "fotografo",
+        "videomaker",
+        "modelo",
+        "locacao",
+    }
+    _KNOWLEDGE_CACHE_SIGNATURE: tuple[str, int] | None = None
+    _KNOWLEDGE_CACHE_VALUE: str = ""
+    _KNOWLEDGE_SECTIONS_CACHE_KEY: int | None = None
+    _KNOWLEDGE_SECTIONS_CACHE_VALUE: list[tuple[str, str]] = []
+    _TOPIC_SECTION_HINTS: dict[str, tuple[str, ...]] = {
+        "location": ("endereco", "acesso", "estacionamento", "localizacao", "bairro", "rua", "escada"),
+        "audio": ("audio", "microfone", "lapela", "mesa de som", "boom", "shotgun", "interface"),
+        "risk": ("risco", "transferencia", "cancelamento", "reagendamento", "mais de 5 pessoas", "animais"),
+        "schedule": ("agendar", "agendamento", "disponibilidade", "horario", "site", "pagamento"),
+        "structure": ("equipamentos", "estrutura", "fundos", "iluminacao", "infraestrutura"),
+    }
+    _TOPIC_USER_MARKERS: dict[str, tuple[str, ...]] = {
+        "location": (
+            "onde fica",
+            "endereco",
+            "bairro",
+            "estacionamento",
+            "acesso",
+            "shopping",
+            "rua",
+            "escada",
+        ),
+        "audio": ("audio", "microfone", "lapela", "mesa de som", "boom", "shotgun", "interface"),
+        "risk": (
+            "cancelar",
+            "reagendar",
+            "reagendamento",
+            "paguei",
+            "reserva paga",
+            "confete",
+            "fumaca",
+            "glitter",
+            "animal",
+            "somos",
+            "pessoas",
+            "grupo",
+        ),
+        "schedule": (
+            "agendar",
+            "agendamento",
+            "disponibilidade",
+            "horario",
+            "reserva",
+            "valor",
+            "preco",
+            "pacote",
+        ),
+        "structure": (
+            "estrutura",
+            "equipamento",
+            "softbox",
+            "fundo",
+            "iluminacao",
+            "ar condicionado",
+            "cenografia",
+            "inclui",
+        ),
     }
     def generate_reply(
         self,
@@ -283,9 +383,9 @@ class LLMReplyService(BaseExternalService):
 
         context_messages = context_messages or []
         key_memories = key_memories or []
+        requested_model = str(model_override or settings.llm_model).strip() or "unknown"
 
         if self._should_close_conversation(cleaned_user_text):
-            requested_model = str(model_override or settings.llm_model).strip() or "unknown"
             return ExternalServiceResult(
                 status="completed",
                 service=self.service_name,
@@ -299,9 +399,76 @@ class LLMReplyService(BaseExternalService):
                 reply_text=self._CLOSING_PHRASE,
             )
 
+        normalized_user_text = self._normalize_for_quality(cleaned_user_text)
+        if self._is_personal_question(normalized_user_text):
+            reply_text = self._append_contact_intake_if_needed(
+                reply_text=(
+                    "Eu sou o Agente FC VIP e foco no atendimento do estudio. "
+                    "Posso te ajudar com estrutura, valores e agendamento."
+                ),
+                user_text=cleaned_user_text,
+                key_memories=key_memories,
+            )
+            return ExternalServiceResult(
+                status="completed",
+                service=self.service_name,
+                action=action,
+                model="rule_domain_redirect",
+                requested_model=requested_model,
+                attempted_models=["rule_domain_redirect"],
+                quality_issue=None,
+                quality_retry_status="not_needed",
+                routing_link=None,
+                reply_text=reply_text,
+            )
+
+        if self._contains_profanity(normalized_user_text):
+            reply_text = self._append_contact_intake_if_needed(
+                reply_text=(
+                    "Vamos manter um tom respeitoso para continuar o atendimento. "
+                    "Posso te ajudar com locacao do estudio, valores e agendamento."
+                ),
+                user_text=cleaned_user_text,
+                key_memories=key_memories,
+            )
+            return ExternalServiceResult(
+                status="completed",
+                service=self.service_name,
+                action=action,
+                model="rule_respect_redirect",
+                requested_model=requested_model,
+                attempted_models=["rule_respect_redirect"],
+                quality_issue=None,
+                quality_retry_status="not_needed",
+                routing_link=None,
+                reply_text=reply_text,
+            )
+
+        if self._is_visit_experience_comment(normalized_user_text):
+            reply_text = self._append_contact_intake_if_needed(
+                reply_text=(
+                    "Que bom saber que voce esteve no estudio. "
+                    "Eu nao tenho sentimentos, mas fico feliz em seguir com seu atendimento. "
+                    "Se puder, me conte como foi sua experiencia e qual nota de 0 a 10 voce daria para a FC VIP."
+                ),
+                user_text=cleaned_user_text,
+                key_memories=key_memories,
+            )
+            return ExternalServiceResult(
+                status="completed",
+                service=self.service_name,
+                action=action,
+                model="rule_visit_feedback",
+                requested_model=requested_model,
+                attempted_models=["rule_visit_feedback"],
+                quality_issue=None,
+                quality_retry_status="not_needed",
+                routing_link=None,
+                reply_text=reply_text,
+            )
+
         escalation_reason = self._detect_escalation_reason(cleaned_user_text)
         if escalation_reason:
-            requested_model = str(model_override or settings.llm_model).strip() or "unknown"
             return ExternalServiceResult(
                 status="completed",
                 service=self.service_name,
@@ -320,14 +487,46 @@ class LLMReplyService(BaseExternalService):
 
         cta_link, cta_reason = self._select_cta_link(cleaned_user_text, context_messages, key_memories)
 
-        if cta_reason == "agendar" and self._is_explicit_schedule_request(cleaned_user_text):
-            requested_model = str(model_override or settings.llm_model).strip() or "unknown"
-            schedule_reply = (
-                "O agendamento e feito totalmente pelo nosso site, mas ele e super intuitivo, "
-                "tenho certeza que voce conseguira agendar de forma facil e simples! "
-                "Nao consigo confirmar horario manualmente por aqui."
+        if self._is_value_request(cleaned_user_text):
+            if not cta_link:
+                cta_link = self._LINK_NEW_SCHEDULE
+            cta_reason = "valores"
+            reply_text = self._ensure_final_cta(
+                "Os pacotes e valores atualizados sao consultados pelo nosso site oficial.",
+                cta_link,
+                cta_reason,
             )
+            reply_text = self._append_contact_intake_if_needed(
+                reply_text=reply_text,
+                user_text=cleaned_user_text,
+                key_memories=key_memories,
+            )
+            return ExternalServiceResult(
+                status="completed",
+                service=self.service_name,
+                action=action,
+                model="rule_values_site_only",
+                requested_model=requested_model,
+                attempted_models=["rule_values_site_only"],
+                quality_issue=None,
+                quality_retry_status="not_needed",
+                routing_link=cta_link,
+                reply_text=reply_text,
+            )
+
+        if self._is_explicit_schedule_request(cleaned_user_text):
+            if not cta_link:
+                recent_text = " ".join(str(item.get("text") or "") for item in context_messages[-settings.llm_effective_context_messages :])
+                customer_status = self._infer_customer_status(self._normalize(f"{cleaned_user_text} {recent_text}"), key_memories)
+                cta_link = self._LINK_OLD_SCHEDULE if customer_status == "antigo" else self._LINK_NEW_SCHEDULE
+            cta_reason = "agendar"
+            schedule_reply = self._build_schedule_rule_reply(cleaned_user_text)
             reply_text = self._ensure_final_cta(schedule_reply, cta_link, cta_reason)
+            reply_text = self._append_contact_intake_if_needed(
+                reply_text=reply_text,
+                user_text=cleaned_user_text,
+                key_memories=key_memories,
+            )
             return ExternalServiceResult(
                 status="completed",
                 service=self.service_name,
@@ -348,6 +547,11 @@ class LLMReplyService(BaseExternalService):
 
         identity_reply = self._build_identity_reply(cleaned_user_text, key_memories)
         if identity_reply:
+            identity_reply = self._append_contact_intake_if_needed(
+                reply_text=identity_reply,
+                user_text=cleaned_user_text,
+                key_memories=key_memories,
+            )
             return ExternalServiceResult(
                 status="completed",
                 service=self.service_name,
@@ -427,11 +631,20 @@ class LLMReplyService(BaseExternalService):
                 quality_retry_status = "fallback_failed"
 
         sanitized_reply = self._sanitize_identity_hallucination(selected_reply)
+        sanitized_reply = self._sanitize_low_quality_reply(
+            user_text=cleaned_user_text,
+            reply_text=sanitized_reply,
+        )
         policy_aligned_reply = self._apply_domain_policy_guards(
             user_text=cleaned_user_text,
             reply_text=sanitized_reply,
         )
         reply_text = self._ensure_final_cta(policy_aligned_reply, cta_link, cta_reason)
+        reply_text = self._append_contact_intake_if_needed(
+            reply_text=reply_text,
+            user_text=cleaned_user_text,
+            key_memories=key_memories,
+        )
 
         return ExternalServiceResult(
             status="completed",
@@ -454,9 +667,14 @@ class LLMReplyService(BaseExternalService):
         key_memories: list[dict[str, Any]],
     ) -> list[dict[str, str]]:
         domain_description = " ".join(settings.llm_domain_description.split()).strip()
-        knowledge_text = self._load_knowledge_text()
         context_window_size = settings.llm_effective_context_messages
         tolerated_offtopic_turns = max(1, int(settings.llm_offtopic_tolerance_turns))
+        prompt_context_chars = max(200, int(settings.llm_prompt_max_context_chars))
+        limited_memories = max(4, int(settings.llm_max_key_memories))
+        knowledge_text = self._build_knowledge_text_for_prompt(
+            user_text=user_text,
+            context_messages=context_messages,
+        )
 
         system_prompt = (
             "Voce e o Agente Virtual da FC VIP, um estudio de fotografia e video. "
@@ -493,7 +711,7 @@ class LLMReplyService(BaseExternalService):
                 if str(item.get("key") or "").strip() and str(item.get("value") or "").strip()
             ]
             if compact_memories:
-                system_prompt += "\n\nMemorias-chave do cliente:\n" + "\n".join(compact_memories[:25])
+                system_prompt += "\n\nMemorias-chave do cliente:\n" + "\n".join(compact_memories[:limited_memories])
 
         messages: list[dict[str, str]] = [{"role": "system", "content": system_prompt}]
         recent_context_messages = context_messages[-context_window_size:]
@@ -502,7 +720,7 @@ class LLMReplyService(BaseExternalService):
             content = " ".join(str(item.get("text") or "").split()).strip()
             if role not in {"user", "assistant"} or not content:
                 continue
-            messages.append({"role": role, "content": content[:1200]})
+            messages.append({"role": role, "content": content[:prompt_context_chars]})
 
         messages.append({"role": "user", "content": user_text})
         return messages
@@ -557,11 +775,132 @@ class LLMReplyService(BaseExternalService):
         return None
 
     def _normalize_for_quality(self, value: str) -> str:
+        return self._normalize_ascii_cached(str(value or ""))
+
+    @staticmethod
+    @lru_cache(maxsize=4096)
+    def _normalize_ascii_cached(value: str) -> str:
         lowered = str(value or "").lower()
         ascii_value = unicodedata.normalize("NFKD", lowered).encode("ascii", "ignore").decode("ascii")
         return " ".join(ascii_value.split())
 
+    def _build_knowledge_text_for_prompt(
+        self,
+        *,
+        user_text: str,
+        context_messages: list[dict[str, Any]],
+    ) -> str:
+        base_knowledge = self._load_knowledge_text()
+        if not base_knowledge:
+            return ""
+
+        context_window_size = settings.llm_effective_context_messages
+        recent_context_messages = context_messages[-context_window_size:]
+        recent_text = " ".join(str(item.get("text") or "") for item in recent_context_messages)
+        normalized_probe = self._normalize_for_quality(f"{user_text} {recent_text}")
+        selected_topics = self._select_topics(normalized_probe)
+        selected_sections = self._select_knowledge_sections(base_knowledge, selected_topics)
+        max_chars = max(1000, int(settings.llm_knowledge_max_chars))
+
+        if not selected_sections:
+            return base_knowledge[:max_chars]
+
+        assembled: list[str] = []
+        total_chars = 0
+        for section_text in selected_sections:
+            chunk = section_text.strip()
+            if not chunk:
+                continue
+            projected = total_chars + len(chunk) + 2
+            if projected > max_chars and assembled:
+                break
+            if projected > max_chars:
+                assembled.append(chunk[:max_chars])
+                break
+            assembled.append(chunk)
+            total_chars = projected
+
+        final_text = "\n\n".join(assembled).strip()
+        if not final_text:
+            return base_knowledge[:max_chars]
+        return final_text
+
+    def _select_topics(self, normalized_probe: str) -> list[str]:
+        selected: list[str] = []
+        for topic, markers in self._TOPIC_USER_MARKERS.items():
+            if any(marker in normalized_probe for marker in markers):
+                selected.append(topic)
+        return selected
+
+    def _select_knowledge_sections(self, knowledge_text: str, topics: list[str]) -> list[str]:
+        sections = self._split_markdown_sections(knowledge_text)
+        if not sections:
+            return []
+
+        max_sections = max(1, int(settings.llm_knowledge_max_sections))
+        normalized_topics = [item for item in topics if item in self._TOPIC_SECTION_HINTS]
+
+        prioritized: list[str] = []
+        for heading, content in sections:
+            normalized_heading = self._normalize_for_quality(heading)
+            normalized_content = self._normalize_for_quality(content[:1400])
+
+            if not normalized_topics:
+                if "regras estritas" in normalized_heading or "base de conhecimento" in normalized_heading:
+                    prioritized.append(content)
+                continue
+
+            for topic in normalized_topics:
+                hints = self._TOPIC_SECTION_HINTS.get(topic, ())
+                if any(hint in normalized_heading for hint in hints) or any(hint in normalized_content for hint in hints):
+                    prioritized.append(content)
+                    break
+
+        if not prioritized:
+            prioritized = [sections[0][1]]
+
+        # Dedupe while preserving order, then enforce section cap.
+        seen: set[str] = set()
+        unique: list[str] = []
+        for content in prioritized:
+            signature = self._normalize_for_quality(content[:200])
+            if signature in seen:
+                continue
+            seen.add(signature)
+            unique.append(content)
+            if len(unique) >= max_sections:
+                break
+        return unique
+
+    def _split_markdown_sections(self, knowledge_text: str) -> list[tuple[str, str]]:
+        cls = type(self)
+        cache_key = hash(knowledge_text)
+        if cls._KNOWLEDGE_SECTIONS_CACHE_KEY == cache_key:
+            return cls._KNOWLEDGE_SECTIONS_CACHE_VALUE
+
+        sections: list[tuple[str, str]] = []
+        current_heading = "preamble"
+        current_lines: list[str] = []
+        for line in knowledge_text.split("\n"):
+            if line.startswith("## "):
+                section_text = "\n".join(current_lines).strip()
+                if section_text:
+                    sections.append((current_heading, section_text))
+                current_heading = line[3:].strip() or "section"
+                current_lines = [line]
+                continue
+            current_lines.append(line)
+
+        final_text = "\n".join(current_lines).strip()
+        if final_text:
+            sections.append((current_heading, final_text))
+
+        cls._KNOWLEDGE_SECTIONS_CACHE_KEY = cache_key
+        cls._KNOWLEDGE_SECTIONS_CACHE_VALUE = sections
+        return sections
+
     def _load_knowledge_text(self) -> str:
+        cls = type(self)
         path_raw = settings.llm_knowledge_path.strip()
         if not path_raw:
             return ""
@@ -587,13 +926,22 @@ class LLMReplyService(BaseExternalService):
             seen_paths.add(normalized)
             if not file_path.exists() or not file_path.is_file():
                 continue
+            cache_signature = (normalized, int(file_path.stat().st_mtime_ns))
+            if cls._KNOWLEDGE_CACHE_SIGNATURE == cache_signature and cls._KNOWLEDGE_CACHE_VALUE:
+                return cls._KNOWLEDGE_CACHE_VALUE
             try:
                 content = file_path.read_text(encoding="utf-8")
             except Exception:  # noqa: BLE001
                 continue
             cleaned = content.replace("\r\n", "\n").strip()
             if cleaned:
-                return cleaned[:12000]
+                max_chars = max(1000, int(settings.llm_knowledge_max_chars))
+                cached = cleaned[:max_chars]
+                cls._KNOWLEDGE_CACHE_SIGNATURE = cache_signature
+                cls._KNOWLEDGE_CACHE_VALUE = cached
+                cls._KNOWLEDGE_SECTIONS_CACHE_KEY = None
+                cls._KNOWLEDGE_SECTIONS_CACHE_VALUE = []
+                return cached
         return ""
 
     def _normalize(self, value: str) -> str:
@@ -822,6 +1170,17 @@ class LLMReplyService(BaseExternalService):
 
         has_booking_intent = any(keyword in normalized for keyword in self._INTENT_SCHEDULE_KEYWORDS)
         has_availability_signal = any(marker in normalized for marker in self._SCHEDULE_AVAILABILITY_MARKERS)
+        has_time_range_signal = bool(
+            re.search(
+                r"\b(?:das?|de)\s*(\d{1,2})(?:h)?\s*(?:as|a|-)\s*(\d{1,2})(?:h)?\b",
+                normalized,
+            )
+        )
+        has_explicit_time_request = bool(self._extract_hour_mentions(user_text)) and any(
+            marker in normalized
+            for marker in {"pode ser", "consigo", "precisava", "quero", "marcar", "reservar", "horario", "hora"}
+        )
+        has_booking_intent = has_booking_intent or has_time_range_signal or has_explicit_time_request
         if not has_booking_intent and not has_availability_signal:
             return False
 
@@ -829,6 +1188,111 @@ class LLMReplyService(BaseExternalService):
         if has_exploratory_intent and not has_availability_signal:
             return False
         return True
+
+    def _build_schedule_rule_reply(self, user_text: str) -> str:
+        if self._is_out_of_business_hours(user_text):
+            return (
+                "Nesse horario nao trabalhamos. "
+                "Para verificar todos os horarios disponiveis com seguranca, consulte a agenda completa no site."
+            )
+        return (
+            "O agendamento e feito totalmente pelo nosso site, mas ele e super intuitivo, "
+            "tenho certeza que voce conseguira agendar de forma facil e simples! "
+            "Nao consigo confirmar horario manualmente por aqui."
+        )
+
+    def _is_value_request(self, user_text: str) -> bool:
+        normalized = self._normalize_for_quality(user_text)
+        if not normalized:
+            return False
+        return any(keyword in normalized for keyword in self._VALUE_KEYWORDS)
+
+    def _extract_hour_mentions(self, user_text: str) -> list[int]:
+        normalized = self._normalize_for_quality(user_text)
+        if not normalized:
+            return []
+
+        hour_values: list[int] = []
+        explicit_time_re = re.compile(r"\b([01]?\d|2[0-3])(?:[:h]([0-5]\d)?)?\b")
+        for match in explicit_time_re.finditer(normalized):
+            raw_hour = str(match.group(1) or "").strip()
+            if not raw_hour:
+                continue
+            try:
+                hour = int(raw_hour)
+            except ValueError:
+                continue
+            if 0 <= hour <= 23:
+                hour_values.append(hour)
+        return hour_values[:4]
+
+    def _is_out_of_business_hours(self, user_text: str) -> bool:
+        open_hour = max(0, min(23, int(settings.llm_business_open_hour)))
+        close_hour = max(1, min(24, int(settings.llm_business_close_hour)))
+        if close_hour <= open_hour:
+            close_hour = min(24, open_hour + 1)
+
+        mentions = self._extract_hour_mentions(user_text)
+        if not mentions:
+            return False
+        return any(hour < open_hour or hour >= close_hour for hour in mentions)
+
+    def _is_personal_question(self, normalized_user_text: str) -> bool:
+        return any(marker in normalized_user_text for marker in self._PERSONAL_QUESTION_MARKERS)
+
+    def _contains_profanity(self, normalized_user_text: str) -> bool:
+        return any(marker in normalized_user_text for marker in self._PROFANITY_MARKERS)
+
+    def _is_visit_experience_comment(self, normalized_user_text: str) -> bool:
+        if any(marker in normalized_user_text for marker in self._VISIT_EXPERIENCE_MARKERS):
+            return True
+        return bool(
+            re.search(
+                r"\b(?:fui|estive|passei)\b(?:\s+\w+){0,4}\b(?:estudio|ai)\b",
+                normalized_user_text,
+            )
+        )
+
+    def _append_contact_intake_if_needed(
+        self,
+        *,
+        reply_text: str,
+        user_text: str,
+        key_memories: list[dict[str, Any]],
+    ) -> str:
+        if not self._needs_contact_intake(user_text=user_text, key_memories=key_memories):
+            return reply_text
+
+        normalized_reply = self._normalize_for_quality(reply_text)
+        if self._reply_already_requests_intake(normalized_reply):
+            return reply_text
+
+        intake_prompt = self._build_contact_intake_prompt()
+        if not reply_text.strip():
+            return intake_prompt
+        return f"{reply_text.strip()}\n\n{intake_prompt}"
+
+    def _needs_contact_intake(self, *, user_text: str, key_memories: list[dict[str, Any]]) -> bool:
+        normalized_user = self._normalize_for_quality(user_text)
+        if not normalized_user:
+            return False
+        if self._should_close_conversation(user_text):
+            return False
+
+        has_known_name = bool(
+            self._memory_lookup_raw(key_memories, "nome_contato").strip()
+            or self._memory_lookup_raw(key_memories, "nome_cliente").strip()
+        )
+        return not has_known_name
+
+    def _reply_already_requests_intake(self, normalized_reply_text: str) -> bool:
+        return any(hint in normalized_reply_text for hint in self._CONTACT_INTAKE_HINTS)
+
+    def _build_contact_intake_prompt(self) -> str:
+        return (
+            "Antes de avancarmos, para completar seu cadastro me informe: "
+            "nome completo, @ do Instagram e se voce e fotografo, videomaker, modelo ou apenas locacao."
+        )
 
     def _detect_escalation_reason(self, user_text: str) -> str | None:
         normalized = self._normalize_for_quality(user_text)
@@ -943,6 +1407,24 @@ class LLMReplyService(BaseExternalService):
         if any(token in normalized for token in banned_tokens):
             return "Eu sou o Agente FC VIP. Posso te ajudar com atendimento, horarios e agendamento."
         return reply_text
+
+    def _sanitize_low_quality_reply(self, *, user_text: str, reply_text: str) -> str:
+        normalized_reply = self._normalize_for_quality(reply_text)
+        if not any(marker in normalized_reply for marker in self._LOW_QUALITY_MARKERS):
+            return reply_text
+
+        normalized_user = self._normalize_for_quality(user_text)
+        asks_values = any(keyword in normalized_user for keyword in self._VALUE_KEYWORDS)
+        asks_schedule = self._is_explicit_schedule_request(user_text)
+        if asks_values or asks_schedule:
+            return (
+                "Para consultar pacotes, valores e disponibilidade, usamos o site oficial da FC VIP. "
+                "Posso te orientar no agendamento por la."
+            )
+        return (
+            "Eu sou o Agente FC VIP e sigo focado no atendimento do estudio. "
+            "Posso te ajudar com estrutura, regras de uso e agendamento."
+        )
 
     def _apply_domain_policy_guards(self, *, user_text: str, reply_text: str) -> str:
         normalized_user = self._normalize_for_quality(user_text)
