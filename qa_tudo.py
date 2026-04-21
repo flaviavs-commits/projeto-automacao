@@ -1483,7 +1483,7 @@ def check_whatsapp_dispatch_failures(base_url: str, lookback_minutes: int = 1440
         if not dispatch_status:
             continue
         attempts += 1
-        if dispatch_status == "sent":
+        if dispatch_status in {"sent", "completed"}:
             continue
 
         detail_parts = [

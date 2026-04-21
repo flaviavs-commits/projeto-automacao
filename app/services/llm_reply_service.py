@@ -42,6 +42,22 @@ class LLMReplyService(BaseExternalService):
         "tudo certo",
         "fechado",
     }
+    _GREETING_MARKERS = {
+        "oi",
+        "oie",
+        "ola",
+        "olaa",
+        "ols",
+        "opa",
+        "bom dia",
+        "boa tarde",
+        "boa noite",
+        "ola tudo bem",
+        "oi tudo bem",
+        "bom dia tudo bem",
+        "boa tarde tudo bem",
+        "boa noite tudo bem",
+    }
 
     _VALUE_KEYWORDS = {
         "valor",
@@ -384,6 +400,29 @@ class LLMReplyService(BaseExternalService):
         context_messages = context_messages or []
         key_memories = key_memories or []
         requested_model = str(model_override or settings.llm_model).strip() or "unknown"
+        normalized_user_text = self._normalize_for_quality(cleaned_user_text)
+
+        if self._is_greeting(normalized_user_text):
+            reply_text = self._append_contact_intake_if_needed(
+                reply_text=(
+                    "Ola! Sou o Agente FC VIP. "
+                    "Posso te ajudar com estrutura, valores e agendamento do estudio."
+                ),
+                user_text=cleaned_user_text,
+                key_memories=key_memories,
+            )
+            return ExternalServiceResult(
+                status="completed",
+                service=self.service_name,
+                action=action,
+                model="rule_greeting",
+                requested_model=requested_model,
+                attempted_models=["rule_greeting"],
+                quality_issue=None,
+                quality_retry_status="not_needed",
+                routing_link=None,
+                reply_text=reply_text,
+            )
 
         if self._should_close_conversation(cleaned_user_text):
             return ExternalServiceResult(
@@ -399,7 +438,6 @@ class LLMReplyService(BaseExternalService):
                 reply_text=self._CLOSING_PHRASE,
             )
 
-        normalized_user_text = self._normalize_for_quality(cleaned_user_text)
         if self._is_personal_question(normalized_user_text):
             reply_text = self._append_contact_intake_if_needed(
                 reply_text=(
@@ -767,6 +805,12 @@ class LLMReplyService(BaseExternalService):
         normalized_reply = self._normalize_for_quality(compact_reply)
         if any(marker in normalized_reply for marker in self._LOW_QUALITY_MARKERS):
             return "low_quality_marker"
+
+        if (
+            self._normalize_for_quality(self._CLOSING_PHRASE) in normalized_reply
+            and not self._should_close_conversation(user_text)
+        ):
+            return "unexpected_closing"
 
         normalized_user = self._normalize_for_quality(user_text)
         critical_intent = any(keyword in normalized_user for keyword in self._QUALITY_CRITICAL_INTENT_KEYWORDS)
@@ -1163,6 +1207,11 @@ class LLMReplyService(BaseExternalService):
             return True
         return False
 
+    def _is_greeting(self, normalized_user_text: str) -> bool:
+        compact = re.sub(r"[^\w\s]", " ", str(normalized_user_text or ""))
+        compact = " ".join(compact.split())
+        return compact in self._GREETING_MARKERS
+
     def _is_explicit_schedule_request(self, user_text: str) -> bool:
         normalized = self._normalize_for_quality(user_text)
         if not normalized:
@@ -1410,6 +1459,15 @@ class LLMReplyService(BaseExternalService):
 
     def _sanitize_low_quality_reply(self, *, user_text: str, reply_text: str) -> str:
         normalized_reply = self._normalize_for_quality(reply_text)
+        if (
+            self._normalize_for_quality(self._CLOSING_PHRASE) in normalized_reply
+            and not self._should_close_conversation(user_text)
+        ):
+            return (
+                "Sou o Agente FC VIP e posso te ajudar com estrutura, valores e agendamento do estudio. "
+                "Me diga como posso ajudar."
+            )
+
         if not any(marker in normalized_reply for marker in self._LOW_QUALITY_MARKERS):
             return reply_text
 

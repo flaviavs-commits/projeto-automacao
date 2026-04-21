@@ -12,6 +12,8 @@ from app.models.contact_identity import ContactIdentity
 class CustomerIdentityService:
     """Resolves a single customer across platform identities."""
 
+    _EVOLUTION_WHATSAPP_SUFFIXES = ("@s.whatsapp.net", "@c.us")
+
     def resolve_or_create_contact(
         self,
         *,
@@ -119,8 +121,14 @@ class CustomerIdentityService:
             return ""
 
         if platform == "whatsapp":
-            digits = "".join(ch for ch in raw if ch.isdigit())
-            return digits or raw
+            normalized_whatsapp = raw
+            lowered_whatsapp = normalized_whatsapp.lower()
+            for suffix in self._EVOLUTION_WHATSAPP_SUFFIXES:
+                if lowered_whatsapp.endswith(suffix):
+                    normalized_whatsapp = normalized_whatsapp[: -len(suffix)]
+                    break
+            digits = "".join(ch for ch in normalized_whatsapp if ch.isdigit())
+            return digits or normalized_whatsapp
 
         return raw.lower()
 

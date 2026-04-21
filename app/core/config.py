@@ -29,6 +29,9 @@ class Settings(BaseSettings):
     meta_auth_base_url: str = Field(default="https://www.facebook.com", alias="META_AUTH_BASE_URL")
     meta_api_version: str = Field(default="v23.0", alias="META_API_VERSION")
     meta_whatsapp_phone_number_id: str = Field(default="", alias="META_WHATSAPP_PHONE_NUMBER_ID")
+    evolution_api_base_url: str = Field(default="", alias="EVOLUTION_API_BASE_URL")
+    evolution_api_key: str = Field(default="", alias="EVOLUTION_API_KEY")
+    evolution_instance_name: str = Field(default="", alias="EVOLUTION_INSTANCE_NAME")
     instagram_business_account_id: str = Field(default="", alias="INSTAGRAM_BUSINESS_ACCOUNT_ID")
     instagram_app_id: str = Field(default="", alias="INSTAGRAM_APP_ID")
     instagram_app_secret: str = Field(default="", alias="INSTAGRAM_APP_SECRET")
@@ -141,6 +144,14 @@ class Settings(BaseSettings):
     @property
     def tiktok_runtime_enabled(self) -> bool:
         return self.tiktok_enabled and self.tiktok_ready
+
+    @property
+    def evolution_ready(self) -> bool:
+        return (
+            bool(self.evolution_api_base_url.strip())
+            and bool(self.evolution_api_key.strip())
+            and bool(self.evolution_instance_name.strip())
+        )
 
     @property
     def llm_ready(self) -> bool:

@@ -26,6 +26,7 @@ def health_check() -> dict:
     cached_meta_refresh_attempt = cached_meta_snapshot.get("refresh_attempt")
     cached_instagram_account_ready = bool(cached_meta_snapshot.get("instagram_account_ready"))
     cached_whatsapp_phone_number_ready = bool(cached_meta_snapshot.get("whatsapp_phone_number_ready"))
+    evolution_ready = settings.evolution_ready
     resolved_meta_credentials = PlatformAccountService().resolve_meta_credentials()
     effective_meta_runtime_enabled = settings.meta_enabled and (
         settings.meta_ready or cached_meta_token_ready
@@ -74,16 +75,13 @@ def health_check() -> dict:
             "meta_access_token_source": resolved_meta_credentials.get("access_token_source"),
             "instagram_publish_ready": effective_instagram_publish_ready,
             "instagram_cached_account_ready": cached_instagram_account_ready,
+            "evolution_ready": evolution_ready,
+            "evolution_api_base_url_configured": bool(settings.evolution_api_base_url.strip()),
+            "evolution_instance_name_configured": bool(settings.evolution_instance_name.strip()),
             "whatsapp_phone_number_id_configured": bool(settings.meta_whatsapp_phone_number_id.strip()),
             "whatsapp_cached_phone_number_ready": cached_whatsapp_phone_number_ready,
             "resolved_whatsapp_phone_number_id": resolved_meta_credentials.get("phone_number_id"),
-            "whatsapp_dispatch_ready": (
-                effective_meta_runtime_enabled
-                and (
-                    bool(settings.meta_whatsapp_phone_number_id.strip())
-                    or cached_whatsapp_phone_number_ready
-                )
-            ),
+            "whatsapp_dispatch_ready": evolution_ready,
             "tiktok_enabled": settings.tiktok_enabled,
             "tiktok_ready": settings.tiktok_ready,
             "tiktok_runtime_enabled": settings.tiktok_runtime_enabled,

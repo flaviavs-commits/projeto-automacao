@@ -1,6 +1,5 @@
 from app.core.config import settings
 from app.services.base import BaseExternalService
-from app.services.platform_account_service import PlatformAccountService
 
 
 class WhatsAppService(BaseExternalService):
@@ -8,54 +7,46 @@ class WhatsAppService(BaseExternalService):
 
     service_name = "whatsapp"
 
-    def _messages_url(self, phone_number_id: str) -> str:
-        base = settings.meta_graph_base_url.rstrip("/")
-        return f"{base}/{settings.meta_api_version}/{phone_number_id}/messages"
+    def _evolution_send_text_url(self) -> str:
+        base = settings.evolution_api_base_url.rstrip("/")
+        instance_name = settings.evolution_instance_name.strip()
+        return f"{base}/message/sendText/{instance_name}"
+
+    def _normalize_recipient_number(self, recipient: str) -> str:
+        raw = str(recipient or "").strip()
+        if not raw:
+            return ""
+        if "@" in raw:
+            raw = raw.split("@", 1)[0].strip()
+        digits = "".join(ch for ch in raw if ch.isdigit())
+        return digits or raw
 
     def send_text_message(self, payload: dict) -> dict:
-        to = str(payload.get("to") or "").strip()
+        to = self._normalize_recipient_number(str(payload.get("to") or "").strip())
         text = str(payload.get("text") or "").strip()
         if not to or not text:
             return self.invalid_payload("send_text_message", "fields 'to' and 'text' are required")
-        if not settings.meta_enabled:
-            return self.integration_disabled("send_text_message", "meta_disabled")
-
-        resolved_credentials = PlatformAccountService().resolve_meta_credentials(
-            preferred_phone_number_id=str(payload.get("phone_number_id") or "").strip() or None,
-        )
-        access_token = str(
-            payload.get("access_token")
-            or resolved_credentials.get("access_token")
-        ).strip()
-        phone_number_id = str(
-            payload.get("phone_number_id")
-            or resolved_credentials.get("phone_number_id")
-        ).strip()
-        if not access_token or not phone_number_id:
+        if not settings.evolution_ready:
             return self.missing_credentials(
                 "send_text_message",
                 [
-                    "OAuth persisted token (or META_ACCESS_TOKEN fallback)",
-                    "META_WHATSAPP_PHONE_NUMBER_ID",
+                    "EVOLUTION_API_BASE_URL",
+                    "EVOLUTION_API_KEY",
+                    "EVOLUTION_INSTANCE_NAME",
                 ],
             )
 
         body = {
-            "messaging_product": "whatsapp",
-            "to": to,
-            "type": "text",
-            "text": {
-                "body": text,
-                "preview_url": bool(payload.get("preview_url", False)),
-            },
+            "number": to,
+            "text": text,
         }
         headers = {
-            "Authorization": f"Bearer {access_token}",
+            "apikey": settings.evolution_api_key.strip(),
             "Content-Type": "application/json",
         }
         response = self._request(
             method="POST",
-            url=self._messages_url(phone_number_id),
+            url=self._evolution_send_text_url(),
             headers=headers,
             json_payload=body,
         )
@@ -65,14 +56,14 @@ class WhatsAppService(BaseExternalService):
         body_payload = response.get("body")
         message_id = None
         if isinstance(body_payload, dict):
-            messages = body_payload.get("messages")
-            if isinstance(messages, list) and messages:
-                first = messages[0]
-                if isinstance(first, dict):
-                    message_id = first.get("id")
+            key_payload = body_payload.get("key")
+            if isinstance(key_payload, dict):
+                message_id = key_payload.get("id")
+            if message_id is None:
+                message_id = body_payload.get("id")
 
         return {
-            "status": "sent",
+            "status": "completed",
             "service": self.service_name,
             "action": "send_text_message",
             "message_id": message_id,

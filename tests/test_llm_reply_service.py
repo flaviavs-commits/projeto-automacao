@@ -133,6 +133,31 @@ class LLMReplyServiceTests(unittest.TestCase):
         self.assertIn("pacotes e valores", normalized_reply)
         self.assertIn("fcvip.com.br", normalized_reply)
 
+    def test_generate_reply_short_greeting_does_not_close_conversation(self) -> None:
+        result = self.service.generate_reply(
+            user_text="ols",
+            context_messages=[
+                {
+                    "role": "assistant",
+                    "text": "Por nada! Sempre que precisar de ajuda e so entrar em contato.",
+                },
+            ],
+            key_memories=[],
+        )
+        self.assertEqual(result.get("model"), "rule_greeting")
+        normalized_reply = self.service._normalize_for_quality(str(result.get("reply_text") or ""))  # noqa: SLF001
+        self.assertIn("agente fc vip", normalized_reply)
+        self.assertNotIn("por nada", normalized_reply)
+
+    def test_sanitize_unexpected_closing_for_non_final_message(self) -> None:
+        sanitized = self.service._sanitize_low_quality_reply(  # noqa: SLF001
+            user_text="ola",
+            reply_text="Por nada! Sempre que precisar de ajuda e so entrar em contato a FC VIP agradece seu contato",
+        )
+        normalized = self.service._normalize_for_quality(sanitized)  # noqa: SLF001
+        self.assertIn("agente fc vip", normalized)
+        self.assertNotIn("por nada", normalized)
+
     def test_generate_reply_personal_question_redirects_to_domain(self) -> None:
         result = self.service.generate_reply(
             user_text="voce e casada?",

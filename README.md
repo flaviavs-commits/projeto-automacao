@@ -88,6 +88,9 @@ Copie `.env.example` para `.env` e ajuste os valores locais. As variaveis suport
 - `META_AUTH_BASE_URL`
 - `META_API_VERSION`
 - `META_WHATSAPP_PHONE_NUMBER_ID`
+- `EVOLUTION_API_BASE_URL`
+- `EVOLUTION_API_KEY`
+- `EVOLUTION_INSTANCE_NAME`
 - `INSTAGRAM_BUSINESS_ACCOUNT_ID`
 - `INSTAGRAM_APP_ID`
 - `INSTAGRAM_APP_SECRET`
@@ -326,6 +329,7 @@ alembic upgrade head
 - `GET /oauth/facebook/callback`
 - `GET /webhooks/meta`
 - `POST /webhooks/meta`
+- `POST /webhooks/evolution`
 
 ## OAuth Meta/Facebook
 
@@ -333,7 +337,8 @@ alembic upgrade head
 - Endpoint de callback: `GET /oauth/meta/callback` (alias: `GET /oauth/facebook/callback`).
 - O callback valida `state` assinado com TTL e troca o `code` por token na Graph API.
 - O token resultante e salvo em `platform_accounts.access_token_encrypted`.
-- Os servicos de WhatsApp e publicacao Instagram usam esse token salvo como fallback automatico.
+- Os servicos de publicacao Instagram usam esse token salvo como fallback automatico.
+- O canal WhatsApp usa a Evolution API para webhook inbound e dispatch outbound.
 - A URI de callback no Meta Developers deve apontar para seu dominio publico, por exemplo:
   - `https://SEU_DOMINIO/oauth/meta/callback`
   - ou `https://SEU_DOMINIO/oauth/facebook/callback`

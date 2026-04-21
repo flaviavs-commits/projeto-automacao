@@ -13,6 +13,7 @@ from app.api.routes.health import router as health_router
 from app.api.routes.messages import router as messages_router
 from app.api.routes.oauth_meta import router as oauth_meta_router
 from app.api.routes.posts import router as posts_router
+from app.api.routes.webhooks_evolution import router as webhooks_evolution_router
 from app.api.routes.webhooks_meta import router as webhooks_meta_router
 from app.core.config import settings
 from app.core.database import get_database_runtime_state
@@ -105,6 +106,7 @@ async def unhandled_exception_handler(
 
 app.include_router(health_router)
 app.include_router(webhooks_meta_router)
+app.include_router(webhooks_evolution_router)
 app.include_router(conversations_router)
 app.include_router(messages_router)
 app.include_router(contacts_router)
