@@ -74,19 +74,33 @@ def _require_meta_oauth_configuration() -> None:
         )
 
 
+def _normalize_instagram_username(value: str | None) -> str:
+    cleaned = str(value or "").strip().lower()
+    if cleaned.startswith("@"):
+        cleaned = cleaned[1:]
+    return cleaned
+
+
 def _extract_meta_assets_from_pages_payload(
     pages_payload: dict,
-) -> tuple[str | None, str | None, str | None, str | None]:
+    *,
+    preferred_instagram_username: str | None = None,
+    preferred_instagram_business_account_id: str | None = None,
+) -> tuple[str | None, str | None, str | None, str | None, list[dict[str, str | None]]]:
     data = pages_payload.get("data")
     if not isinstance(data, list):
-        return None, None, None, None
+        return None, None, None, None, []
 
-    whatsapp_business_account_id = None
-    whatsapp_phone_number_id = None
+    fallback_whatsapp_business_account_id = None
+    fallback_whatsapp_phone_number_id = None
+    available_instagram_accounts: list[dict[str, str | None]] = []
+    candidates: list[dict[str, str | None]] = []
     for page in data:
         if not isinstance(page, dict):
             continue
 
+        page_id = str(page.get("id") or "").strip() or None
+        page_name = str(page.get("name") or "").strip() or None
         ig = page.get("instagram_business_account")
         if isinstance(ig, dict):
             ig_id = str(ig.get("id") or "").strip() or None
@@ -96,9 +110,10 @@ def _extract_meta_assets_from_pages_payload(
             ig_username = None
 
         waba = page.get("whatsapp_business_account")
+        page_whatsapp_business_account_id = None
+        page_whatsapp_phone_number_id = None
         if isinstance(waba, dict):
-            if whatsapp_business_account_id is None:
-                whatsapp_business_account_id = str(waba.get("id") or "").strip() or None
+            page_whatsapp_business_account_id = str(waba.get("id") or "").strip() or None
             phone_numbers = waba.get("phone_numbers")
             if isinstance(phone_numbers, list) and phone_numbers:
                 for item in phone_numbers:
@@ -106,27 +121,91 @@ def _extract_meta_assets_from_pages_payload(
                         continue
                     candidate = str(item.get("id") or "").strip()
                     if candidate:
-                        whatsapp_phone_number_id = candidate
+                        page_whatsapp_phone_number_id = candidate
                         break
-            if whatsapp_phone_number_id is None:
+            if page_whatsapp_phone_number_id is None:
                 candidate_direct = str(waba.get("phone_number_id") or "").strip()
                 if candidate_direct:
-                    whatsapp_phone_number_id = candidate_direct
+                    page_whatsapp_phone_number_id = candidate_direct
+
+        if fallback_whatsapp_business_account_id is None and page_whatsapp_business_account_id is not None:
+            fallback_whatsapp_business_account_id = page_whatsapp_business_account_id
+        if fallback_whatsapp_phone_number_id is None and page_whatsapp_phone_number_id is not None:
+            fallback_whatsapp_phone_number_id = page_whatsapp_phone_number_id
 
         if ig_id or ig_username:
-            return ig_id, ig_username, whatsapp_business_account_id, whatsapp_phone_number_id
+            row = {
+                "page_id": page_id,
+                "page_name": page_name,
+                "instagram_business_account_id": ig_id,
+                "instagram_username": ig_username,
+                "whatsapp_business_account_id": page_whatsapp_business_account_id,
+                "whatsapp_phone_number_id": page_whatsapp_phone_number_id,
+            }
+            available_instagram_accounts.append(row)
+            candidates.append(row)
 
-    return None, None, whatsapp_business_account_id, whatsapp_phone_number_id
+    selected: dict[str, str | None] | None = None
+    preferred_ig_id = str(preferred_instagram_business_account_id or "").strip()
+    preferred_ig_username = _normalize_instagram_username(preferred_instagram_username)
+    if preferred_ig_id:
+        selected = next(
+            (item for item in candidates if str(item.get("instagram_business_account_id") or "").strip() == preferred_ig_id),
+            None,
+        )
+    if selected is None and preferred_ig_username:
+        selected = next(
+            (
+                item
+                for item in candidates
+                if _normalize_instagram_username(item.get("instagram_username")) == preferred_ig_username
+            ),
+            None,
+        )
+    if selected is None and candidates:
+        selected = candidates[0]
+
+    if selected is None:
+        return (
+            None,
+            None,
+            fallback_whatsapp_business_account_id,
+            fallback_whatsapp_phone_number_id,
+            available_instagram_accounts,
+        )
+
+    whatsapp_business_account_id = selected.get("whatsapp_business_account_id") or fallback_whatsapp_business_account_id
+    whatsapp_phone_number_id = selected.get("whatsapp_phone_number_id") or fallback_whatsapp_phone_number_id
+    return (
+        selected.get("instagram_business_account_id"),
+        selected.get("instagram_username"),
+        whatsapp_business_account_id,
+        whatsapp_phone_number_id,
+        available_instagram_accounts,
+    )
 
 
-def _build_state_payload(*, redirect_uri: str, scopes: str) -> dict:
-    return {
+def _build_state_payload(
+    *,
+    redirect_uri: str,
+    scopes: str,
+    preferred_instagram_username: str | None,
+    preferred_instagram_business_account_id: str | None,
+) -> dict:
+    payload = {
         "provider": "meta",
         "redirect_uri": redirect_uri,
         "scopes": scopes,
         "nonce": uuid4().hex,
         "iat": int(datetime.now(timezone.utc).timestamp()),
     }
+    normalized_username = _normalize_instagram_username(preferred_instagram_username)
+    preferred_ig_id = str(preferred_instagram_business_account_id or "").strip()
+    if normalized_username:
+        payload["preferred_instagram_username"] = normalized_username
+    if preferred_ig_id:
+        payload["preferred_instagram_business_account_id"] = preferred_ig_id
+    return payload
 
 
 def _build_start_response(
@@ -135,6 +214,8 @@ def _build_start_response(
     callback_route_name: str,
     redirect_uri: str | None,
     scopes: str | None,
+    preferred_instagram_username: str | None,
+    preferred_instagram_business_account_id: str | None,
     return_url: bool,
 ) -> dict | RedirectResponse:
     _require_meta_oauth_configuration()
@@ -154,6 +235,8 @@ def _build_start_response(
     state_payload = _build_state_payload(
         redirect_uri=resolved_redirect_uri,
         scopes=resolved_scopes,
+        preferred_instagram_username=preferred_instagram_username,
+        preferred_instagram_business_account_id=preferred_instagram_business_account_id,
     )
     signed_state = sign_state_payload(
         state_payload,
@@ -182,6 +265,8 @@ def start_meta_oauth(
     request: Request,
     redirect_uri: str | None = Query(default=None),
     scopes: str | None = Query(default=None),
+    preferred_instagram_username: str | None = Query(default=None),
+    preferred_instagram_business_account_id: str | None = Query(default=None),
     return_url: bool = Query(default=False),
 ) -> dict | RedirectResponse:
     return _build_start_response(
@@ -189,6 +274,8 @@ def start_meta_oauth(
         callback_route_name="oauth_meta_callback",
         redirect_uri=redirect_uri,
         scopes=scopes,
+        preferred_instagram_username=preferred_instagram_username,
+        preferred_instagram_business_account_id=preferred_instagram_business_account_id,
         return_url=return_url,
     )
 
@@ -198,6 +285,8 @@ def start_facebook_oauth(
     request: Request,
     redirect_uri: str | None = Query(default=None),
     scopes: str | None = Query(default=None),
+    preferred_instagram_username: str | None = Query(default=None),
+    preferred_instagram_business_account_id: str | None = Query(default=None),
     return_url: bool = Query(default=False),
 ) -> dict | RedirectResponse:
     return _build_start_response(
@@ -205,6 +294,8 @@ def start_facebook_oauth(
         callback_route_name="oauth_facebook_callback",
         redirect_uri=redirect_uri,
         scopes=scopes,
+        preferred_instagram_username=preferred_instagram_username,
+        preferred_instagram_business_account_id=preferred_instagram_business_account_id,
         return_url=return_url,
     )
 
@@ -345,13 +436,20 @@ def oauth_meta_callback(
     if pages_result.get("status") == "ok" and isinstance(pages_result.get("body"), dict):
         pages_body = pages_result.get("body") or {}
 
+    preferred_instagram_username = str(state_payload.get("preferred_instagram_username") or "").strip() or None
+    preferred_instagram_business_account_id = (
+        str(state_payload.get("preferred_instagram_business_account_id") or "").strip() or None
+    )
     (
         instagram_business_account_id,
         instagram_username,
         whatsapp_business_account_id,
         whatsapp_phone_number_id,
+        available_instagram_accounts,
     ) = _extract_meta_assets_from_pages_payload(
-        pages_body
+        pages_body,
+        preferred_instagram_username=preferred_instagram_username,
+        preferred_instagram_business_account_id=preferred_instagram_business_account_id,
     )
     encrypted_access_token = encrypt_secret(
         active_access_token,
@@ -435,6 +533,7 @@ def oauth_meta_callback(
         "token_expires_at": token_expires_at.isoformat() if token_expires_at is not None else None,
         "instagram_business_account_id": instagram_business_account_id,
         "instagram_username": instagram_username,
+        "available_instagram_accounts": available_instagram_accounts,
         "whatsapp_business_account_id": whatsapp_business_account_id,
         "whatsapp_phone_number_id": whatsapp_phone_number_id,
         "redirect_uri": redirect_uri,

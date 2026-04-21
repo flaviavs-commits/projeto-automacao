@@ -1,4 +1,5 @@
 from datetime import datetime, timedelta, timezone
+import unicodedata
 from uuid import UUID
 
 from sqlalchemy import func, select
@@ -26,6 +27,10 @@ AUDIO_MESSAGE_TYPES = {"audio", "voice", "ptt"}
 SPAM_MESSAGE_THRESHOLD = 5
 SPAM_WINDOW_SECONDS = 10
 SPAM_COOLDOWN_SECONDS = 60
+_CLOSING_REPLY_MARKERS = (
+    "por nada! sempre que precisar de ajuda",
+    "fc vip agradece seu contato",
+)
 
 
 def _legacy_qa_result(task_name: str, payload: dict | None = None) -> dict:
@@ -38,6 +43,21 @@ def _legacy_qa_result(task_name: str, payload: dict | None = None) -> dict:
 
 def _safe_error_text(exc: Exception) -> str:
     return f"{exc.__class__.__name__}: {str(exc)}"[:2000]
+
+
+def _normalize_text(value: str) -> str:
+    lowered = str(value or "").lower()
+    ascii_value = unicodedata.normalize("NFKD", lowered).encode("ascii", "ignore").decode("ascii")
+    return " ".join(ascii_value.split())
+
+
+def _should_mark_conversation_closed(*, llm_model: str, reply_text: str) -> bool:
+    if str(llm_model or "").strip().lower() == "rule_close":
+        return True
+    normalized_reply = _normalize_text(reply_text)
+    if not normalized_reply:
+        return False
+    return all(marker in normalized_reply for marker in _CLOSING_REPLY_MARKERS)
 
 
 def _parse_uuid(value: object, field_name: str) -> UUID:
@@ -375,11 +395,14 @@ def generate_reply(payload: dict) -> dict:
                 key_memories=key_memories,
             )
             llm_status = str((llm_result or {}).get("status") or "")
+            llm_model = str((llm_result or {}).get("model") or "")
             reply_text = str((llm_result or {}).get("reply_text") or "").strip()
             if llm_status not in {"completed", "blocked_out_of_scope"} or not reply_text:
                 raise RuntimeError(f"llm_reply_generation_failed: status={llm_status}")
             if spam_notice:
                 reply_text = f"{spam_notice}\n\n{reply_text}".strip()
+            if _should_mark_conversation_closed(llm_model=llm_model, reply_text=reply_text):
+                conversation.status = "closed"
 
             outbound = Message(
                 conversation_id=conversation.id,
@@ -393,7 +416,7 @@ def generate_reply(payload: dict) -> dict:
                     "source": "celery_auto_reply",
                     "source_message_id": source_message_id,
                     "llm_status": llm_status,
-                    "llm_model": (llm_result or {}).get("model"),
+                    "llm_model": llm_model,
                 },
                 ai_generated=True,
             )
@@ -423,7 +446,7 @@ def generate_reply(payload: dict) -> dict:
                         "source_message_id": source_message_id,
                         "reply_message_preview": reply_text[:120],
                         "llm_status": llm_status,
-                        "llm_model": (llm_result or {}).get("model"),
+                        "llm_model": llm_model,
                         "dispatch_status": (dispatch_result or {}).get("status"),
                     },
                 )
@@ -439,7 +462,7 @@ def generate_reply(payload: dict) -> dict:
             "conversation_id": str(conversation_id),
             "reply_message_id": str(outbound.id),
             "llm_status": (llm_result or {}).get("status"),
-            "llm_model": (llm_result or {}).get("model"),
+            "llm_model": llm_model,
             "dispatch_status": (dispatch_result or {}).get("status"),
         }
     except Exception as exc:  # noqa: BLE001

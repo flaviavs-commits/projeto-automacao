@@ -149,6 +149,26 @@ class LLMReplyServiceTests(unittest.TestCase):
         self.assertIn("agente fc vip", normalized_reply)
         self.assertNotIn("por nada", normalized_reply)
 
+    def test_generate_reply_greeting_first_contact_mentions_first_contact(self) -> None:
+        result = self.service.generate_reply(
+            user_text="ola",
+            context_messages=[],
+            key_memories=[],
+        )
+        self.assertEqual(result.get("model"), "rule_greeting")
+        normalized_reply = self.service._normalize_for_quality(str(result.get("reply_text") or ""))  # noqa: SLF001
+        self.assertIn("primeiro contato", normalized_reply)
+
+    def test_should_close_conversation_rejects_thanks_with_service_intent(self) -> None:
+        should_close = self.service._should_close_conversation(  # noqa: SLF001
+            "obrigado, queria saber os valores de 2h"
+        )
+        self.assertFalse(should_close)
+
+    def test_should_close_conversation_accepts_short_thanks(self) -> None:
+        should_close = self.service._should_close_conversation("obrigado")  # noqa: SLF001
+        self.assertTrue(should_close)
+
     def test_sanitize_unexpected_closing_for_non_final_message(self) -> None:
         sanitized = self.service._sanitize_low_quality_reply(  # noqa: SLF001
             user_text="ola",

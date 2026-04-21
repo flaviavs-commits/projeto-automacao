@@ -403,11 +403,12 @@ class LLMReplyService(BaseExternalService):
         normalized_user_text = self._normalize_for_quality(cleaned_user_text)
 
         if self._is_greeting(normalized_user_text):
+            greeting_reply = self._build_greeting_reply(
+                context_messages=context_messages,
+                key_memories=key_memories,
+            )
             reply_text = self._append_contact_intake_if_needed(
-                reply_text=(
-                    "Ola! Sou o Agente FC VIP. "
-                    "Posso te ajudar com estrutura, valores e agendamento do estudio."
-                ),
+                reply_text=greeting_reply,
                 user_text=cleaned_user_text,
                 key_memories=key_memories,
             )
@@ -732,6 +733,7 @@ class LLMReplyService(BaseExternalService):
             "(2) voce apresentar valores/pacotes pela primeira vez, ou (3) quando voce sugerir tour virtual para conhecer o espaco. "
             "Quando o cliente agradecer e finalizar, encerre exatamente com: "
             f"'{self._CLOSING_PHRASE}'. "
+            "Nunca use essa frase em saudacoes iniciais ou quando houver nova pergunta/solicitacao do cliente. "
             "Se perguntarem seu nome, responda exatamente: 'Eu sou o Agente FC VIP'. "
             "Nunca diga que e Watson, Claude, Anthropic, OpenAI ou qualquer outro nome externo."
         )
@@ -1203,9 +1205,61 @@ class LLMReplyService(BaseExternalService):
             return False
         if any(marker in normalized for marker in self._FINALIZE_MARKERS):
             return True
-        if any(marker in normalized for marker in self._THANKS_MARKERS) and "?" not in user_text:
+        if "?" in user_text:
+            return False
+        if not any(marker in normalized for marker in self._THANKS_MARKERS):
+            return False
+        if self._has_service_intent(normalized):
+            return False
+        if self._is_greeting(normalized):
+            return False
+        if self._is_short_thanks_message(normalized):
             return True
         return False
+
+    def _has_service_intent(self, normalized_user_text: str) -> bool:
+        intent_markers = (
+            self._INTENT_SCHEDULE_KEYWORDS
+            | self._INTENT_DISCOVER_KEYWORDS
+            | self._SCHEDULE_EXPLORATORY_MARKERS
+            | self._VALUE_KEYWORDS
+            | self._TOUR_KEYWORDS
+            | self._LOCATION_TOPIC_KEYWORDS
+            | self._AUDIO_TOPIC_KEYWORDS
+        )
+        return any(marker in normalized_user_text for marker in intent_markers)
+
+    def _is_short_thanks_message(self, normalized_user_text: str) -> bool:
+        compact = re.sub(r"[^\w\s]", " ", str(normalized_user_text or ""))
+        token_count = len([token for token in compact.split() if token.strip()])
+        return 0 < token_count <= 8
+
+    def _build_greeting_reply(
+        self,
+        *,
+        context_messages: list[dict[str, Any]],
+        key_memories: list[dict[str, Any]],
+    ) -> str:
+        context_window_size = settings.llm_effective_context_messages
+        recent_context_messages = context_messages[-context_window_size:]
+        recent_text = " ".join(str(item.get("text") or "") for item in recent_context_messages)
+        inferred_status = self._infer_customer_status(self._normalize(recent_text), key_memories)
+        has_customer_status_memory = self._has_memory(key_memories, "cliente_status") or self._has_memory(
+            key_memories,
+            "ja_conhece_estudio",
+        )
+
+        if inferred_status == "antigo":
+            return (
+                "Ola! Que bom ter voce de volta na FC VIP. "
+                "Posso te ajudar com estrutura, valores e agendamento do estudio."
+            )
+        if inferred_status == "novo" or (not recent_context_messages and not has_customer_status_memory):
+            return (
+                "Ola! Sou o Agente FC VIP. "
+                "Se este for seu primeiro contato, ja te explico como funciona e te ajudo com valores e agendamento."
+            )
+        return "Ola! Sou o Agente FC VIP. Posso te ajudar com estrutura, valores e agendamento do estudio."
 
     def _is_greeting(self, normalized_user_text: str) -> bool:
         compact = re.sub(r"[^\w\s]", " ", str(normalized_user_text or ""))
@@ -1463,6 +1517,11 @@ class LLMReplyService(BaseExternalService):
             self._normalize_for_quality(self._CLOSING_PHRASE) in normalized_reply
             and not self._should_close_conversation(user_text)
         ):
+            normalized_user = self._normalize_for_quality(user_text)
+            if self._is_greeting(normalized_user):
+                return (
+                    "Ola! Sou o Agente FC VIP e posso te ajudar com estrutura, valores e agendamento do estudio."
+                )
             return (
                 "Sou o Agente FC VIP e posso te ajudar com estrutura, valores e agendamento do estudio. "
                 "Me diga como posso ajudar."
