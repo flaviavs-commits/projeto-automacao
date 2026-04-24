@@ -700,7 +700,7 @@ def check_scope_objective_alignment() -> tuple[str, str]:
     scope_lower = scope_section.lower()
     route_files = {
         "whatsapp": ROOT / "app" / "api" / "routes" / "webhooks_meta.py",
-        "instagram": ROOT / "app" / "services" / "instagram_service.py",
+        "instagram": ROOT / "app" / "services" / "instagram_publish_service.py",
         "tiktok": ROOT / "app" / "services" / "tiktok_service.py",
         "youtube": ROOT / "app" / "services" / "youtube_service.py",
         "dashboard": ROOT / "app" / "api" / "routes" / "dashboard.py",

@@ -1,7 +1,8 @@
 import base64
 import json
+import re
 from datetime import datetime, timezone
-from hashlib import sha256
+from hashlib import sha1, sha256
 from hmac import new as hmac_new
 from secrets import compare_digest
 
@@ -14,6 +15,79 @@ def safe_compare(value: str, expected: str) -> bool:
     return compare_digest(value, expected)
 
 
+def _escape_char_as_unicode(char: str) -> str:
+    codepoint = ord(char)
+    if codepoint <= 0xFFFF:
+        return f"\\u{codepoint:04x}"
+
+    # Encode supplementary chars (e.g. emoji) as surrogate pairs.
+    codepoint -= 0x10000
+    high = 0xD800 + (codepoint >> 10)
+    low = 0xDC00 + (codepoint & 0x3FF)
+    return f"\\u{high:04x}\\u{low:04x}"
+
+
+def _escape_meta_payload(body: bytes, *, include_legacy_ascii_escapes: bool) -> bytes:
+    try:
+        text = body.decode("utf-8")
+    except UnicodeDecodeError:
+        return body
+
+    chunks: list[str] = []
+    for char in text:
+        if ord(char) > 127:
+            chunks.append(_escape_char_as_unicode(char))
+            continue
+
+        if include_legacy_ascii_escapes:
+            if char == "/":
+                chunks.append("\\/")
+                continue
+            if char == "<":
+                chunks.append("\\u003c")
+                continue
+            if char == ">":
+                chunks.append("\\u003e")
+                continue
+            if char == "%":
+                chunks.append("\\u0025")
+                continue
+            if char == "@":
+                chunks.append("\\u0040")
+                continue
+
+        chunks.append(char)
+
+    return "".join(chunks).encode("utf-8")
+
+
+def _candidate_signature_payloads(body: bytes) -> list[bytes]:
+    candidates = [body]
+    escaped_unicode = _escape_meta_payload(body, include_legacy_ascii_escapes=False)
+    escaped_extended = _escape_meta_payload(body, include_legacy_ascii_escapes=True)
+
+    for payload in (escaped_unicode, escaped_extended):
+        if payload not in candidates:
+            candidates.append(payload)
+    return candidates
+
+
+def _extract_signature_digest(raw_digest: str) -> str | None:
+    candidate = str(raw_digest or "").strip().strip('"').strip("'").lower()
+    if not candidate:
+        return None
+
+    # Some senders include additional metadata after the digest (e.g. ",sha1=...").
+    for delimiter in (",", ";", " "):
+        if delimiter in candidate:
+            candidate = candidate.split(delimiter, 1)[0].strip()
+
+    match = re.fullmatch(r"[0-9a-f]+", candidate)
+    if not match:
+        return None
+    return candidate
+
+
 def verify_meta_signature(*, body: bytes, signature_header: str | None, app_secret: str) -> bool:
     secret = str(app_secret or "").strip()
     if not secret:
@@ -24,13 +98,21 @@ def verify_meta_signature(*, body: bytes, signature_header: str | None, app_secr
         return False
 
     algo, provided_digest = provided.split("=", 1)
-    if algo.strip().lower() != "sha256":
+    normalized_algo = algo.strip().lower()
+    if normalized_algo not in {"sha1", "sha256"}:
         return False
     if not provided_digest:
         return False
 
-    expected_digest = hmac_new(secret.encode("utf-8"), body, sha256).hexdigest()
-    return compare_digest(provided_digest.strip().lower(), expected_digest.lower())
+    digest_impl = sha256 if normalized_algo == "sha256" else sha1
+    normalized_digest = _extract_signature_digest(provided_digest)
+    if normalized_digest is None:
+        return False
+    for candidate_body in _candidate_signature_payloads(body):
+        expected_digest = hmac_new(secret.encode("utf-8"), candidate_body, digest_impl).hexdigest()
+        if compare_digest(normalized_digest, expected_digest.lower()):
+            return True
+    return False
 
 
 def _derive_fernet(secret: str) -> Fernet:

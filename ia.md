@@ -1386,3 +1386,23 @@ Validacao complementar (baseline completo da regressao inicial):
   - aprovados: 42
   - reprovados: 0
   - taxa: 100.0%
+
+## Registro de task - 2026-04-24 (higienizacao estrutural + refactor de webhooks)
+
+Task executada: analise de estrutura de dados e tratamento de webhooks/conexoes com limpeza de codigo morto e refatoracao nao critica.
+
+Entregas no codigo:
+- Novo servico compartilhado `app/services/webhook_ingestion_service.py` para consolidar persistencia de mensagens inbound, idempotencia por `external_message_id` e montagem de payloads de fila.
+- `app/api/routes/webhooks_meta.py` e `app/api/routes/webhooks_evolution.py` migrados para usar o servico compartilhado, reduzindo duplicacao e mantendo contrato de resposta.
+- Remocao de servicos sem uso real no runtime: `app/services/instagram_service.py` e `app/services/media_service.py`.
+- Atualizacao de exports em `app/services/__init__.py`.
+- Ajuste em `qa_tudo.py` para validar Instagram via `instagram_publish_service.py` (arquivo ativo), evitando falso negativo de escopo.
+- README atualizado na arvore de servicos para refletir o estado real do projeto.
+
+Higienizacao de repositorio:
+- Removidos artefatos rastreados de execucao/log que nao fazem parte do produto (`.qa_tmp/*`, `stress_dashboard_report.json`, `stress_dashboard_remote_report.json`, `uvicorn.err.log`, `uvicorn.out.log`).
+- `.gitignore` atualizado para evitar reintroducao desses artefatos.
+
+Validacao:
+- `cmd /c .\\.venv\\Scripts\\python.exe -m unittest discover -s tests -p "test_*.py" -v` -> `OK` (55 testes).
+- `cmd /c .\\.venv\\Scripts\\python.exe -m compileall app qa_tudo.py` -> `OK`.

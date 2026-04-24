@@ -37,6 +37,8 @@ class Settings(BaseSettings):
     instagram_app_secret: str = Field(default="", alias="INSTAGRAM_APP_SECRET")
     meta_app_id: str = Field(default="", alias="META_APP_ID")
     meta_app_secret: str = Field(default="", alias="META_APP_SECRET")
+    meta_app_secret_previous: str = Field(default="", alias="META_APP_SECRET_PREVIOUS")
+    meta_allow_unsigned_instagram: bool = Field(default=False, alias="META_ALLOW_UNSIGNED_INSTAGRAM")
     meta_oauth_redirect_uri: str = Field(default="", alias="META_OAUTH_REDIRECT_URI")
     meta_oauth_scopes: str = Field(
         default=(

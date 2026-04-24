@@ -6,6 +6,11 @@ __pycache__
 .DS_Store
 *.pyc
 qa_report_latest.json
+.qa_tmp/
+uvicorn.out.log
+uvicorn.err.log
+stress_dashboard_report.json
+stress_dashboard_remote_report.json
 storage/*.db
 /felixo-standards
 /build

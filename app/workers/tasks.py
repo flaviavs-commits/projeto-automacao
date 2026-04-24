@@ -12,6 +12,7 @@ from app.models.job import Job
 from app.models.message import Message
 from app.models.post import Post
 from app.services.contact_memory_service import ContactMemoryService
+from app.services.instagram_service import InstagramService
 from app.services.instagram_publish_service import InstagramPublishService
 from app.services.llm_reply_service import LLMReplyService
 from app.services.memory_service import MemoryService
@@ -432,6 +433,34 @@ def generate_reply(payload: dict) -> dict:
                         "phone_number_id": phone_number_id,
                     }
                 )
+                outbound.raw_payload = {
+                    **outbound.raw_payload,
+                    "dispatch_result": dispatch_result,
+                }
+            elif platform == "instagram":
+                recipient_id = ""
+                source_payload = source_message.raw_payload if source_message is not None else {}
+                if isinstance(source_payload, dict):
+                    sender_payload = source_payload.get("sender")
+                    if isinstance(sender_payload, dict):
+                        recipient_id = str(sender_payload.get("id") or "").strip()
+                if not recipient_id and contact is not None:
+                    recipient_id = str(contact.instagram_user_id or "").strip()
+
+                if recipient_id:
+                    dispatch_result = InstagramService().send_text_message(
+                        {
+                            "to": recipient_id,
+                            "text": reply_text,
+                        }
+                    )
+                else:
+                    dispatch_result = {
+                        "status": "invalid_payload",
+                        "service": "instagram",
+                        "action": "send_text_message",
+                        "detail": "missing_recipient_id",
+                    }
                 outbound.raw_payload = {
                     **outbound.raw_payload,
                     "dispatch_result": dispatch_result,

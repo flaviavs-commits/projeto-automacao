@@ -881,3 +881,18 @@ Resumo:
   - perguntas de localizacao (respostas sem endereco oficial);
   - perguntas de audio (modelo ainda afirma disponibilidade em alguns casos);
   - frases de cancelamento/reagendamento pago parcialmente roteadas como agendamento comum.
+
+## Registro de task - 2026-04-24 (limpeza tecnica + refactor de webhook)
+
+Task executada: limpeza de itens nao usados e refatoracao nao critica focada em webhooks/conexoes.
+
+Resumo:
+- criei `app/services/webhook_ingestion_service.py` para centralizar a parte repetida de persistencia/enfileiramento dos webhooks.
+- `webhooks_meta.py` e `webhooks_evolution.py` passaram a usar esse servico compartilhado.
+- removi servicos sem uso real (`app/services/instagram_service.py` e `app/services/media_service.py`) e atualizei `app/services/__init__.py`.
+- limpei artefatos rastreados (`.qa_tmp/*`, `stress_dashboard*.json`, `uvicorn*.log`) e ajustei `.gitignore`.
+- atualizei o `README.md` (arvore de servicos) e `qa_tudo.py` (referencia de arquivo Instagram ativo).
+
+Validacao da rodada:
+- `cmd /c .\\.venv\\Scripts\\python.exe -m unittest discover -s tests -p "test_*.py" -v` -> `OK` (55 testes).
+- `cmd /c .\\.venv\\Scripts\\python.exe -m compileall app qa_tudo.py` -> `OK`.
