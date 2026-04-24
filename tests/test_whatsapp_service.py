@@ -87,6 +87,58 @@ class WhatsAppServiceTests(unittest.TestCase):
         self.assertEqual(result.get("status"), "request_failed")
         self.assertEqual(result.get("status_code"), 401)
 
+    def test_send_text_message_retries_after_connection_closed(self) -> None:
+        send_request = httpx.Request(
+            "POST",
+            "https://evolution.example/message/sendText/main-instance",
+        )
+        state_request = httpx.Request(
+            "GET",
+            "https://evolution.example/instance/connectionState/main-instance",
+        )
+        connect_request = httpx.Request(
+            "GET",
+            "https://evolution.example/instance/connect/main-instance",
+        )
+
+        first_send = httpx.Response(
+            500,
+            request=send_request,
+            json={"message": "Connection Closed"},
+        )
+        state_response = httpx.Response(
+            200,
+            request=state_request,
+            json={"instance": {"instanceName": "main-instance", "state": "close"}},
+        )
+        connect_response = httpx.Response(
+            200,
+            request=connect_request,
+            json={"base64": "data:image/png;base64,abcd", "pairingCode": None},
+        )
+        second_send = httpx.Response(
+            200,
+            request=send_request,
+            json={"key": {"id": "EVOLUTION_RETRIED_MSG_ID"}},
+        )
+
+        with patch(
+            "app.services.base.httpx.Client.request",
+            side_effect=[first_send, state_response, connect_response, second_send],
+        ) as request_mock:
+            result = self.service.send_text_message(
+                {
+                    "to": "5511999999999@s.whatsapp.net",
+                    "text": "Ola!",
+                }
+            )
+
+        self.assertEqual(result.get("status"), "completed")
+        self.assertEqual(result.get("message_id"), "EVOLUTION_RETRIED_MSG_ID")
+        self.assertTrue(result.get("retried"))
+        self.assertEqual(result.get("reconnect_attempt", {}).get("status"), "connect_triggered")
+        self.assertEqual(request_mock.call_count, 4)
+
 
 if __name__ == "__main__":
     unittest.main()

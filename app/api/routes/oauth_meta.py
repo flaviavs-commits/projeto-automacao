@@ -451,6 +451,20 @@ def oauth_meta_callback(
         preferred_instagram_username=preferred_instagram_username,
         preferred_instagram_business_account_id=preferred_instagram_business_account_id,
     )
+    instagram_subscription_result: dict | None = None
+    if instagram_business_account_id:
+        subscription_try = oauth_service.subscribe_instagram_app(
+            instagram_business_account_id=instagram_business_account_id,
+            access_token=active_access_token,
+        )
+        if subscription_try.get("status") == "ok":
+            instagram_subscription_result = {"status": "ok", "result": subscription_try.get("body")}
+        else:
+            instagram_subscription_result = {
+                "status": "failed",
+                "status_code": subscription_try.get("status_code"),
+                "detail": subscription_try.get("detail"),
+            }
     encrypted_access_token = encrypt_secret(
         active_access_token,
         secret=settings.effective_token_encryption_secret,
@@ -497,6 +511,7 @@ def oauth_meta_callback(
         "whatsapp_business_account_id": whatsapp_business_account_id,
         "whatsapp_phone_number_id": whatsapp_phone_number_id,
         "pages_result_status": pages_result.get("status"),
+        "instagram_subscription": instagram_subscription_result,
     }
 
     db.add(
@@ -517,6 +532,7 @@ def oauth_meta_callback(
                 "instagram_username": instagram_username,
                 "whatsapp_business_account_id": whatsapp_business_account_id,
                 "whatsapp_phone_number_id": whatsapp_phone_number_id,
+                "instagram_subscription": instagram_subscription_result,
             },
         )
     )
@@ -536,6 +552,7 @@ def oauth_meta_callback(
         "available_instagram_accounts": available_instagram_accounts,
         "whatsapp_business_account_id": whatsapp_business_account_id,
         "whatsapp_phone_number_id": whatsapp_phone_number_id,
+        "instagram_subscription": instagram_subscription_result,
         "redirect_uri": redirect_uri,
         "next_steps": [
             "Token salvo em platform_accounts e pronto para fallback automatico dos servicos Meta",

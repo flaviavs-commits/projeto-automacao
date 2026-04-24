@@ -86,3 +86,21 @@ class MetaOAuthService(BaseExternalService):
                 "access_token": access_token,
             },
         )
+
+    def subscribe_instagram_app(
+        self,
+        *,
+        instagram_business_account_id: str,
+        access_token: str,
+    ) -> dict:
+        target_id = str(instagram_business_account_id or "").strip()
+        if not target_id:
+            return self.invalid_payload("subscribe_instagram_app", "instagram_business_account_id is required")
+        return self._request(
+            method="POST",
+            url=self._graph_url(f"{target_id}/subscribed_apps"),
+            form_payload={
+                "subscribed_fields": "messages,messaging_postbacks,message_reactions,messaging_seen",
+                "access_token": access_token,
+            },
+        )
