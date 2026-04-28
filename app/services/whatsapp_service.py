@@ -7,26 +7,58 @@ class WhatsAppService(BaseExternalService):
 
     service_name = "whatsapp"
 
-    def _evolution_send_text_url(self) -> str:
-        base = settings.evolution_api_base_url.rstrip("/")
-        instance_name = settings.evolution_instance_name.strip()
+    def _active_provider(self) -> str:
+        return settings.normalized_whatsapp_provider
+
+    def _provider_base_url(self) -> str:
+        if self._active_provider() == "baileys":
+            return settings.whatsapp_gateway_base_url.rstrip("/")
+        return settings.evolution_api_base_url.rstrip("/")
+
+    def _provider_session_name(self) -> str:
+        if self._active_provider() == "baileys":
+            return settings.effective_whatsapp_session_name.strip()
+        return settings.evolution_instance_name.strip()
+
+    def _provider_headers(self) -> dict[str, str]:
+        provider = self._active_provider()
+        api_key = settings.whatsapp_gateway_api_key.strip() if provider == "baileys" else settings.evolution_api_key.strip()
+        headers = {"Content-Type": "application/json"}
+        if api_key:
+            headers["apikey"] = api_key
+        return headers
+
+    def _provider_ready(self) -> bool:
+        if self._active_provider() == "baileys":
+            return settings.whatsapp_gateway_ready
+        return settings.evolution_ready
+
+    def _missing_provider_credentials(self) -> list[str]:
+        if self._active_provider() == "baileys":
+            return [
+                "WHATSAPP_GATEWAY_BASE_URL",
+                "WHATSAPP_SESSION_NAME",
+            ]
+        return [
+            "EVOLUTION_API_BASE_URL",
+            "EVOLUTION_API_KEY",
+            "EVOLUTION_INSTANCE_NAME",
+        ]
+
+    def _send_text_url(self) -> str:
+        base = self._provider_base_url()
+        instance_name = self._provider_session_name()
         return f"{base}/message/sendText/{instance_name}"
 
-    def _evolution_connection_state_url(self) -> str:
-        base = settings.evolution_api_base_url.rstrip("/")
-        instance_name = settings.evolution_instance_name.strip()
+    def _connection_state_url(self) -> str:
+        base = self._provider_base_url()
+        instance_name = self._provider_session_name()
         return f"{base}/instance/connectionState/{instance_name}"
 
-    def _evolution_connect_url(self) -> str:
-        base = settings.evolution_api_base_url.rstrip("/")
-        instance_name = settings.evolution_instance_name.strip()
+    def _connect_url(self) -> str:
+        base = self._provider_base_url()
+        instance_name = self._provider_session_name()
         return f"{base}/instance/connect/{instance_name}"
-
-    def _evolution_headers(self) -> dict[str, str]:
-        return {
-            "apikey": settings.evolution_api_key.strip(),
-            "Content-Type": "application/json",
-        }
 
     def _normalize_recipient_number(self, recipient: str) -> str:
         raw = str(recipient or "").strip()
@@ -45,6 +77,9 @@ class WhatsAppService(BaseExternalService):
             message_id = key_payload.get("id")
             if message_id:
                 return str(message_id)
+        message_id = body_payload.get("messageId")
+        if message_id:
+            return str(message_id)
         raw_message_id = body_payload.get("id")
         return str(raw_message_id) if raw_message_id else None
 
@@ -61,12 +96,19 @@ class WhatsAppService(BaseExternalService):
             "readtimeout",
             "not connected",
             "instance is not connected",
+            "session_not_open",
+            "session closed",
         )
         return any(marker in detail for marker in reconnect_markers)
 
     def _extract_connection_state(self, payload: dict) -> str | None:
         if not isinstance(payload, dict):
             return None
+        session_payload = payload.get("session")
+        if isinstance(session_payload, dict):
+            state = session_payload.get("state")
+            if state:
+                return str(state).strip().lower()
         instance_payload = payload.get("instance")
         if isinstance(instance_payload, dict):
             state = instance_payload.get("state")
@@ -78,10 +120,10 @@ class WhatsAppService(BaseExternalService):
         return None
 
     def _attempt_reconnect(self) -> dict:
-        headers = self._evolution_headers()
+        headers = self._provider_headers()
         state_result = self._request(
             method="GET",
-            url=self._evolution_connection_state_url(),
+            url=self._connection_state_url(),
             headers=headers,
             timeout_seconds=15.0,
         )
@@ -93,7 +135,7 @@ class WhatsAppService(BaseExternalService):
 
         connect_result = self._request(
             method="GET",
-            url=self._evolution_connect_url(),
+            url=self._connect_url(),
             headers=headers,
             timeout_seconds=30.0,
         )
@@ -118,24 +160,25 @@ class WhatsAppService(BaseExternalService):
         text = str(payload.get("text") or "").strip()
         if not to or not text:
             return self.invalid_payload("send_text_message", "fields 'to' and 'text' are required")
-        if not settings.evolution_ready:
+        if self._active_provider() not in {"baileys", "evolution"}:
+            return self.integration_disabled(
+                "send_text_message",
+                f"unsupported_provider:{self._active_provider()}",
+            )
+        if not self._provider_ready():
             return self.missing_credentials(
                 "send_text_message",
-                [
-                    "EVOLUTION_API_BASE_URL",
-                    "EVOLUTION_API_KEY",
-                    "EVOLUTION_INSTANCE_NAME",
-                ],
+                self._missing_provider_credentials(),
             )
 
         body = {
             "number": to,
             "text": text,
         }
-        headers = self._evolution_headers()
+        headers = self._provider_headers()
         response = self._request(
             method="POST",
-            url=self._evolution_send_text_url(),
+            url=self._send_text_url(),
             headers=headers,
             json_payload=body,
         )
@@ -146,7 +189,7 @@ class WhatsAppService(BaseExternalService):
             retried = True
             response = self._request(
                 method="POST",
-                url=self._evolution_send_text_url(),
+                url=self._send_text_url(),
                 headers=headers,
                 json_payload=body,
             )

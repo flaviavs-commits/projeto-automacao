@@ -29,6 +29,10 @@ class Settings(BaseSettings):
     meta_auth_base_url: str = Field(default="https://www.facebook.com", alias="META_AUTH_BASE_URL")
     meta_api_version: str = Field(default="v23.0", alias="META_API_VERSION")
     meta_whatsapp_phone_number_id: str = Field(default="", alias="META_WHATSAPP_PHONE_NUMBER_ID")
+    whatsapp_provider: str = Field(default="evolution", alias="WHATSAPP_PROVIDER")
+    whatsapp_gateway_base_url: str = Field(default="", alias="WHATSAPP_GATEWAY_BASE_URL")
+    whatsapp_gateway_api_key: str = Field(default="", alias="WHATSAPP_GATEWAY_API_KEY")
+    whatsapp_session_name: str = Field(default="", alias="WHATSAPP_SESSION_NAME")
     evolution_api_base_url: str = Field(default="", alias="EVOLUTION_API_BASE_URL")
     evolution_api_key: str = Field(default="", alias="EVOLUTION_API_KEY")
     evolution_instance_name: str = Field(default="", alias="EVOLUTION_INSTANCE_NAME")
@@ -148,12 +152,30 @@ class Settings(BaseSettings):
         return self.tiktok_enabled and self.tiktok_ready
 
     @property
+    def normalized_whatsapp_provider(self) -> str:
+        return str(self.whatsapp_provider or "evolution").strip().lower() or "evolution"
+
+    @property
+    def whatsapp_gateway_ready(self) -> bool:
+        return bool(self.whatsapp_gateway_base_url.strip()) and bool(self.effective_whatsapp_session_name.strip())
+
+    @property
+    def effective_whatsapp_session_name(self) -> str:
+        return self.whatsapp_session_name.strip() or self.evolution_instance_name.strip()
+
+    @property
     def evolution_ready(self) -> bool:
         return (
             bool(self.evolution_api_base_url.strip())
             and bool(self.evolution_api_key.strip())
             and bool(self.evolution_instance_name.strip())
         )
+
+    @property
+    def whatsapp_dispatch_ready(self) -> bool:
+        if self.normalized_whatsapp_provider == "baileys":
+            return self.whatsapp_gateway_ready
+        return self.evolution_ready
 
     @property
     def llm_ready(self) -> bool:

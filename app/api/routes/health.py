@@ -27,6 +27,7 @@ def health_check() -> dict:
     cached_instagram_account_ready = bool(cached_meta_snapshot.get("instagram_account_ready"))
     cached_whatsapp_phone_number_ready = bool(cached_meta_snapshot.get("whatsapp_phone_number_ready"))
     evolution_ready = settings.evolution_ready
+    whatsapp_gateway_ready = settings.whatsapp_gateway_ready
     resolved_meta_credentials = PlatformAccountService().resolve_meta_credentials()
     effective_meta_runtime_enabled = settings.meta_enabled and (
         settings.meta_ready or cached_meta_token_ready
@@ -75,13 +76,17 @@ def health_check() -> dict:
             "meta_access_token_source": resolved_meta_credentials.get("access_token_source"),
             "instagram_publish_ready": effective_instagram_publish_ready,
             "instagram_cached_account_ready": cached_instagram_account_ready,
+            "whatsapp_provider": settings.normalized_whatsapp_provider,
             "evolution_ready": evolution_ready,
             "evolution_api_base_url_configured": bool(settings.evolution_api_base_url.strip()),
             "evolution_instance_name_configured": bool(settings.evolution_instance_name.strip()),
+            "whatsapp_gateway_ready": whatsapp_gateway_ready,
+            "whatsapp_gateway_base_url_configured": bool(settings.whatsapp_gateway_base_url.strip()),
+            "whatsapp_session_name_configured": bool(settings.effective_whatsapp_session_name.strip()),
             "whatsapp_phone_number_id_configured": bool(settings.meta_whatsapp_phone_number_id.strip()),
             "whatsapp_cached_phone_number_ready": cached_whatsapp_phone_number_ready,
             "resolved_whatsapp_phone_number_id": resolved_meta_credentials.get("phone_number_id"),
-            "whatsapp_dispatch_ready": evolution_ready,
+            "whatsapp_dispatch_ready": settings.whatsapp_dispatch_ready,
             "tiktok_enabled": settings.tiktok_enabled,
             "tiktok_ready": settings.tiktok_ready,
             "tiktok_runtime_enabled": settings.tiktok_runtime_enabled,

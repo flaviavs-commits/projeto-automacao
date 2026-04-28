@@ -9,8 +9,7 @@ from app.schemas.webhook_evolution import EvolutionWebhookEnvelope
 from app.services.webhook_ingestion_service import WebhookIngestionService, to_payload_dict
 from app.workers.tasks import process_incoming_message
 
-
-router = APIRouter(prefix="/webhooks/evolution", tags=["webhooks"])
+router = APIRouter(tags=["webhooks"])
 logger = get_logger(__name__)
 
 
@@ -87,7 +86,8 @@ def _extract_evolution_messages(envelope_payload: dict) -> list[dict]:
     return extracted
 
 
-@router.post("", status_code=status.HTTP_202_ACCEPTED)
+@router.post("/webhooks/evolution", status_code=status.HTTP_202_ACCEPTED)
+@router.post("/webhooks/whatsapp", status_code=status.HTTP_202_ACCEPTED)
 async def receive_evolution_webhook(
     envelope: Annotated[
         EvolutionWebhookEnvelope,

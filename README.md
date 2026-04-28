@@ -87,6 +87,10 @@ Copie `.env.example` para `.env` e ajuste os valores locais. As variaveis suport
 - `META_AUTH_BASE_URL`
 - `META_API_VERSION`
 - `META_WHATSAPP_PHONE_NUMBER_ID`
+- `WHATSAPP_PROVIDER`
+- `WHATSAPP_GATEWAY_BASE_URL`
+- `WHATSAPP_GATEWAY_API_KEY`
+- `WHATSAPP_SESSION_NAME`
 - `EVOLUTION_API_BASE_URL`
 - `EVOLUTION_API_KEY`
 - `EVOLUTION_INSTANCE_NAME`
@@ -134,6 +138,17 @@ Copie `.env.example` para `.env` e ajuste os valores locais. As variaveis suport
 - `GET /health` exibe `integrations` com `meta_runtime_enabled`, `meta_cached_token_ready` e `tiktok_runtime_enabled` para observabilidade.
 - `GET /health` tambem exibe `whatsapp_dispatch_ready` e `whatsapp_cached_phone_number_ready`.
 
+### Provider de WhatsApp
+
+- `WHATSAPP_PROVIDER=evolution` preserva o comportamento antigo via Evolution API.
+- `WHATSAPP_PROVIDER=baileys` troca o dispatch outbound para um gateway interno baseado em Baileys.
+- Quando `WHATSAPP_PROVIDER=baileys`, configure `WHATSAPP_GATEWAY_BASE_URL` e `WHATSAPP_SESSION_NAME`.
+- O gateway Baileys incluido em `infra/baileys-gateway/` expoe um subconjunto compativel com a interface usada pelo backend Python:
+  - `GET /instance/connectionState/:sessionName`
+  - `GET /instance/connect/:sessionName`
+  - `POST /message/sendText/:sessionName`
+- O webhook inbound pode continuar apontando para `POST /webhooks/evolution` por compatibilidade, ou para o alias `POST /webhooks/whatsapp`.
+
 ## Instalar dependencias
 
 ```bash
@@ -155,6 +170,26 @@ web: uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-${APP_PORT:-8000}}
 ```
 
 No Railway, configure as variaveis de ambiente necessarias (principalmente `DATABASE_URL`, `REDIS_URL` e tokens). A porta usa `PORT` (Railway) com fallback para `APP_PORT`.
+
+## Subir o gateway Baileys
+
+O repositorio inclui um servico Node separado em `infra/baileys-gateway/` para substituir a Evolution quando `WHATSAPP_PROVIDER=baileys`.
+
+Variaveis esperadas no gateway:
+
+- `PORT`
+- `BAILEYS_API_KEY` (opcional, mas recomendado)
+- `BAILEYS_AUTH_DIR` (recomendado apontar para volume persistente)
+- `WHATSAPP_WEBHOOK_URL` (ex.: `http://projeto-automacao.railway.internal:8080/webhooks/whatsapp`)
+- `BAILEYS_PAIRING_PHONE_NUMBER` (opcional)
+
+Execucao local:
+
+```bash
+cd infra/baileys-gateway
+npm install
+npm start
+```
 
 ## Subir o worker Celery
 
@@ -329,6 +364,7 @@ alembic upgrade head
 - `GET /webhooks/meta`
 - `POST /webhooks/meta`
 - `POST /webhooks/evolution`
+- `POST /webhooks/whatsapp`
 
 ## OAuth Meta/Facebook
 
@@ -337,7 +373,7 @@ alembic upgrade head
 - O callback valida `state` assinado com TTL e troca o `code` por token na Graph API.
 - O token resultante e salvo em `platform_accounts.access_token_encrypted`.
 - Os servicos de publicacao Instagram usam esse token salvo como fallback automatico.
-- O canal WhatsApp usa a Evolution API para webhook inbound e dispatch outbound.
+- O canal WhatsApp pode operar via Evolution (`WHATSAPP_PROVIDER=evolution`) ou via gateway Baileys (`WHATSAPP_PROVIDER=baileys`).
 - A URI de callback no Meta Developers deve apontar para seu dominio publico, por exemplo:
   - `https://SEU_DOMINIO/oauth/meta/callback`
   - ou `https://SEU_DOMINIO/oauth/facebook/callback`

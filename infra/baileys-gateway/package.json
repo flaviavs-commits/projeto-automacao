@@ -1,0 +1,20 @@
+{
+  "name": "baileys-gateway",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Internal WhatsApp gateway powered by Baileys.",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "dependencies": {
+    "@hapi/boom": "^10.0.1",
+    "baileys": "latest",
+    "express": "^5.1.0",
+    "pino": "^9.9.4",
+    "qrcode": "^1.5.4"
+  }
+}

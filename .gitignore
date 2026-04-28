@@ -17,3 +17,5 @@ storage/*.db
 /dist
 /*.spec
 storage/road_test/
+infra/baileys-gateway/node_modules/
+infra/baileys-gateway/.data/
