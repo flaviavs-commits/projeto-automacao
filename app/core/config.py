@@ -98,6 +98,24 @@ class Settings(BaseSettings):
     llm_quality_min_chars: int = Field(default=80, alias="LLM_QUALITY_MIN_CHARS")
     local_storage_path: str = Field(default="storage", alias="LOCAL_STORAGE_PATH")
     log_level: str = Field(default="INFO", alias="LOG_LEVEL")
+    message_retention_max_per_conversation: int = Field(
+        default=5,
+        alias="MESSAGE_RETENTION_MAX_PER_CONVERSATION",
+    )
+    conversation_auto_close_after_minutes: int = Field(
+        default=60,
+        alias="CONVERSATION_AUTO_CLOSE_AFTER_MINUTES",
+    )
+    temp_contact_ttl_minutes: int = Field(
+        default=120,
+        alias="TEMP_CONTACT_TTL_MINUTES",
+    )
+    fcvip_partner_api_enabled: bool = Field(default=True, alias="FCVIP_PARTNER_API_ENABLED")
+    fcvip_partner_api_base_url: str = Field(default="", alias="FCVIP_PARTNER_API_BASE_URL")
+    fcvip_partner_api_key: str = Field(default="", alias="FCVIP_PARTNER_API_KEY")
+    fcvip_partner_api_timeout_seconds: float = Field(default=12.0, alias="FCVIP_PARTNER_API_TIMEOUT_SECONDS")
+    fcvip_partner_api_page_size: int = Field(default=50, alias="FCVIP_PARTNER_API_PAGE_SIZE")
+    fcvip_partner_api_leads_max_pages: int = Field(default=3, alias="FCVIP_PARTNER_API_LEADS_MAX_PAGES")
 
     @property
     def meta_ready(self) -> bool:
@@ -189,7 +207,17 @@ class Settings(BaseSettings):
     @property
     def llm_effective_context_messages(self) -> int:
         desired = max(1, int(self.llm_context_messages))
-        return max(3, min(5, desired))
+        desired_window = max(3, min(5, desired))
+        retention_limit = max(1, int(self.message_retention_max_per_conversation))
+        return min(desired_window, retention_limit)
+
+    @property
+    def fcvip_partner_api_ready(self) -> bool:
+        return (
+            self.fcvip_partner_api_enabled
+            and bool(self.fcvip_partner_api_base_url.strip())
+            and bool(self.fcvip_partner_api_key.strip())
+        )
 
 
 @lru_cache

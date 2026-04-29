@@ -12,6 +12,31 @@ from app.models.contact_memory import ContactMemory
 class ContactMemoryService:
     """Stores key customer memories while skipping ambiguous statements."""
 
+    PILLAR_MEMORY_KEYS = {
+        "nome_cliente",
+        "telefone",
+        "cliente_status",
+        "tipo_projeto",
+        "duracao_desejada_horas",
+        "numero_pessoas",
+        "intencao_principal",
+        "interesse_servico",
+        "preferencia_periodo",
+        "preferencia_horario",
+        "horario_perguntado",
+        "duvida_valor",
+        "duvida_disponibilidade",
+        "localidade_cliente",
+        "perfil_cliente",
+        "interesse",
+        "tipo_agendamento",
+        "pacote_interesse",
+        "interesse_membro",
+        "estrutura_interesse",
+        "human_reason",
+        "origem",
+    }
+
     _AMBIGUOUS_MARKERS = {
         "talvez",
         "nao sei",
@@ -119,9 +144,17 @@ class ContactMemoryService:
         contact_id: UUID,
         source_message_id: UUID,
         inbound_text: str,
+        strict_temporary_mode: bool = False,
     ) -> dict:
         analyzed = self.analyze_text(inbound_text)
         candidates = analyzed["candidates"]
+        if strict_temporary_mode:
+            candidates = [
+                candidate
+                for candidate in candidates
+                if candidate.get("memory_key") in self.PILLAR_MEMORY_KEYS
+                and float(candidate.get("confidence") or 0.0) >= 0.85
+            ]
         if not candidates:
             return {"status": analyzed["status"], "saved_keys": []}
 

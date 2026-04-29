@@ -1,20 +1,26 @@
 from datetime import datetime, timedelta, timezone
+from types import SimpleNamespace
 import unicodedata
 from uuid import UUID
 
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 
+from app.core.config import settings
 from app.core.database import SessionLocal
 from app.models.audit_log import AuditLog
 from app.models.contact import Contact
+from app.models.contact_identity import ContactIdentity
+from app.models.contact_memory import ContactMemory
 from app.models.conversation import Conversation
 from app.models.job import Job
 from app.models.message import Message
 from app.models.post import Post
 from app.services.contact_memory_service import ContactMemoryService
+from app.services.fcvip_partner_api_service import FCVIPPartnerAPIService
 from app.services.instagram_service import InstagramService
 from app.services.instagram_publish_service import InstagramPublishService
 from app.services.llm_reply_service import LLMReplyService
+from app.services.menu_bot_service import MenuBotService
 from app.services.memory_service import MemoryService
 from app.services.routing_service import RoutingService
 from app.services.tiktok_service import TikTokService
@@ -32,6 +38,8 @@ _CLOSING_REPLY_MARKERS = (
     "por nada! sempre que precisar de ajuda",
     "fc vip agradece seu contato",
 )
+_WHATSAPP_LID_SUFFIX = "@lid"
+FOLLOW_UP_WINDOWS_MINUTES = (30, 24 * 60)
 
 
 def _legacy_qa_result(task_name: str, payload: dict | None = None) -> dict:
@@ -69,6 +77,96 @@ def _parse_uuid(value: object, field_name: str) -> UUID:
         return UUID(as_text)
     except Exception as exc:  # noqa: BLE001
         raise ValueError(f"{field_name} is invalid: {as_text}") from exc
+
+
+def _build_llm_disabled_fallback_reply(source_text: str) -> str:
+    normalized = _normalize_text(source_text)
+    asks_schedule = any(
+        marker in normalized
+        for marker in ("agendar", "agendamento", "horario", "disponibilidade", "reserva", "data")
+    )
+    asks_price = any(
+        marker in normalized
+        for marker in ("valor", "valores", "preco", "precos", "pacote", "orcamento")
+    )
+    if asks_schedule:
+        return (
+            "Recebi sua mensagem. O agendamento e feito direto no site oficial da FC VIP: "
+            "https://www.fcvip.com.br/formulario"
+        )
+    if asks_price:
+        return (
+            "Recebi sua mensagem. Os valores e pacotes atualizados estao no site oficial da FC VIP: "
+            "https://www.fcvip.com.br/formulario"
+        )
+    return (
+        "Recebi sua mensagem e ja registrei seu atendimento. "
+        "Se quiser, ja posso te orientar para agendamento no site: https://www.fcvip.com.br/formulario"
+    )
+
+
+def _has_followup_already_sent(*, db, conversation_id: UUID, stage_minutes: int) -> bool:
+    logs = (
+        db.execute(
+            select(AuditLog).where(
+                AuditLog.entity_type == "conversation",
+                AuditLog.entity_id == conversation_id,
+                AuditLog.event_type == "follow_up_sent",
+            )
+        )
+        .scalars()
+        .all()
+    )
+    for entry in logs:
+        details = entry.details if isinstance(entry.details, dict) else {}
+        if int(details.get("stage_minutes") or 0) == int(stage_minutes):
+            return True
+    return False
+
+
+def _upsert_menu_memory_updates(
+    *,
+    db,
+    contact_id: UUID,
+    source_message_id: UUID | None,
+    memory_updates: list[dict],
+) -> list[str]:
+    saved_keys: list[str] = []
+    for update in memory_updates:
+        key = str(update.get("memory_key") or "").strip()
+        value = str(update.get("memory_value") or "").strip()
+        if not key or not value:
+            continue
+        existing = (
+            db.execute(
+                select(ContactMemory).where(
+                    ContactMemory.contact_id == contact_id,
+                    ContactMemory.memory_key == key,
+                )
+            )
+            .scalars()
+            .first()
+        )
+        if existing is None:
+            db.add(
+                ContactMemory(
+                    contact_id=contact_id,
+                    source_message_id=source_message_id,
+                    memory_key=key,
+                    memory_value=value,
+                    status="active",
+                    importance=4,
+                    confidence=0.9,
+                )
+            )
+        else:
+            existing.memory_value = value
+            existing.source_message_id = source_message_id
+            existing.status = "active"
+            existing.importance = max(existing.importance, 4)
+            existing.confidence = max(existing.confidence, 0.9)
+        saved_keys.append(key)
+    return saved_keys
 
 
 def _create_job(job_type: str, payload: dict) -> UUID:
@@ -147,6 +245,245 @@ def _compute_spam_state(
     }
 
 
+def _normalize_whatsapp_phone(value: str | None) -> str:
+    raw = str(value or "").strip()
+    if not raw:
+        return ""
+    lowered = raw.lower()
+    if lowered.endswith(_WHATSAPP_LID_SUFFIX) or "@" in lowered:
+        return ""
+    digits = "".join(ch for ch in raw if ch.isdigit())
+    return digits or ""
+
+
+def _resolve_customer_profile_for_reply(*, contact: Contact | None) -> dict:
+    if contact is None:
+        return {"status": "skipped_missing_contact", "source": "local"}
+
+    phone = _normalize_whatsapp_phone(contact.phone)
+    if not phone:
+        return {"status": "skipped_missing_phone", "source": "local"}
+
+    lookup_result = FCVIPPartnerAPIService().lookup_customer_by_whatsapp(phone_number=phone)
+    lookup_status = str(lookup_result.get("status") or "").strip().lower()
+    if lookup_status == "completed":
+        return {
+            "status": "completed",
+            "source": "partner_api",
+            "customer_exists": bool(lookup_result.get("customer_exists")),
+            "checked_pages": lookup_result.get("checked_pages"),
+        }
+
+    return {
+        "status": lookup_status or "request_failed",
+        "source": "partner_api",
+        "detail": lookup_result.get("detail"),
+        "status_code": lookup_result.get("status_code"),
+    }
+
+
+def _inject_runtime_customer_status_memory(
+    *,
+    key_memories: list[dict],
+    customer_exists: bool,
+    source: str,
+) -> list[dict]:
+    if source != "partner_api":
+        return list(key_memories)
+
+    filtered: list[dict] = []
+    for memory in list(key_memories):
+        key = str(memory.get("key") or "").strip().lower()
+        if key in {"cliente_status", "customer_status_source"}:
+            continue
+        filtered.append(memory)
+
+    filtered.append(
+        {
+            "key": "cliente_status",
+            "value": "antigo" if customer_exists else "novo",
+            "importance": 5,
+            "confidence": 0.99,
+            "updated_at": None,
+        }
+    )
+    filtered.append(
+        {
+            "key": "customer_status_source",
+            "value": "partner_api",
+            "importance": 5,
+            "confidence": 0.99,
+            "updated_at": None,
+        }
+    )
+    return filtered
+
+
+def _strip_api_derived_memory_updates(*, memory_updates: list[dict], source: str) -> list[dict]:
+    if source != "partner_api":
+        return memory_updates
+    blocked_keys = {"cliente_status", "tipo_agendamento"}
+    return [
+        update
+        for update in memory_updates
+        if str(update.get("memory_key") or "").strip().lower() not in blocked_keys
+    ]
+
+
+def _close_stale_open_conversations(*, db, now_utc: datetime) -> None:
+    stale_minutes = max(1, int(settings.conversation_auto_close_after_minutes))
+    cutoff = now_utc - timedelta(minutes=stale_minutes)
+    stale_open_conversations = (
+        db.execute(
+            select(Conversation).where(
+                Conversation.status == "open",
+                Conversation.last_message_at.isnot(None),
+                Conversation.last_message_at < cutoff,
+            )
+        )
+        .scalars()
+        .all()
+    )
+    for conversation in stale_open_conversations:
+        conversation.status = "closed"
+
+
+def _contact_has_reliable_identity(*, db, contact: Contact) -> bool:
+    if _normalize_whatsapp_phone(contact.phone):
+        return True
+
+    identities = (
+        db.execute(
+            select(ContactIdentity).where(ContactIdentity.contact_id == contact.id)
+        )
+        .scalars()
+        .all()
+    )
+    for identity in identities:
+        platform = str(identity.platform or "").strip().lower()
+        value = str(identity.platform_user_id or "").strip().lower()
+        if not value:
+            continue
+        if platform != "whatsapp":
+            return True
+        if value.endswith(_WHATSAPP_LID_SUFFIX) or "@" in value:
+            continue
+        if _normalize_whatsapp_phone(value):
+            return True
+    return False
+
+
+def _contact_has_pillar_memories(*, db, contact_id: UUID) -> bool:
+    pillar_keys = list(ContactMemoryService.PILLAR_MEMORY_KEYS)
+    if not pillar_keys:
+        return False
+    memory = (
+        db.execute(
+            select(ContactMemory.id).where(
+                ContactMemory.contact_id == contact_id,
+                ContactMemory.status == "active",
+                ContactMemory.memory_key.in_(pillar_keys),
+            )
+        )
+        .scalars()
+        .first()
+    )
+    return memory is not None
+
+
+def _prune_conversation_messages(*, db, conversation_id: UUID) -> int:
+    retention_limit = max(1, int(settings.message_retention_max_per_conversation))
+    ordered_ids = (
+        db.execute(
+            select(Message.id)
+            .where(Message.conversation_id == conversation_id)
+            .order_by(Message.created_at.desc())
+        )
+        .scalars()
+        .all()
+    )
+    removable_ids = ordered_ids[retention_limit:]
+    if not removable_ids:
+        return 0
+
+    db.execute(delete(Message).where(Message.id.in_(removable_ids)))
+    db.add(
+        AuditLog(
+            entity_type="conversation",
+            entity_id=conversation_id,
+            event_type="message_retention_pruned",
+            details={
+                "conversation_id": str(conversation_id),
+                "removed_count": len(removable_ids),
+                "limit_applied": retention_limit,
+            },
+        )
+    )
+    return len(removable_ids)
+
+
+def _cleanup_temporary_contact_if_eligible(*, db, contact_id: UUID, now_utc: datetime) -> None:
+    contact = db.get(Contact, contact_id)
+    if contact is None or not bool(contact.is_temporary):
+        return
+
+    if _contact_has_reliable_identity(db=db, contact=contact):
+        contact.is_temporary = False
+        return
+
+    stale_minutes = max(1, int(settings.conversation_auto_close_after_minutes))
+    stale_cutoff = now_utc - timedelta(minutes=stale_minutes)
+    conversations = (
+        db.execute(
+            select(Conversation).where(Conversation.contact_id == contact.id)
+        )
+        .scalars()
+        .all()
+    )
+
+    if not conversations:
+        return
+
+    for conversation in conversations:
+        is_closed_and_stale = bool(
+            str(conversation.status or "").strip().lower() == "closed"
+            and conversation.last_message_at is not None
+            and conversation.last_message_at < stale_cutoff
+        )
+        is_stale_open = bool(
+            str(conversation.status or "").strip().lower() == "open"
+            and conversation.last_message_at is not None
+            and conversation.last_message_at < stale_cutoff
+        )
+        if not (is_closed_and_stale or is_stale_open):
+            return
+
+    if _contact_has_pillar_memories(db=db, contact_id=contact.id):
+        return
+
+    ttl_minutes = max(1, int(settings.temp_contact_ttl_minutes))
+    if contact.created_at and contact.created_at > now_utc - timedelta(minutes=ttl_minutes):
+        return
+
+    for conversation in conversations:
+        db.execute(delete(Message).where(Message.conversation_id == conversation.id))
+        db.delete(conversation)
+
+    db.add(
+        AuditLog(
+            entity_type="contact",
+            entity_id=contact.id,
+            event_type="temporary_contact_pruned",
+            details={
+                "contact_id": str(contact.id),
+                "customer_id": contact.customer_id,
+                "conversation_count_removed": len(conversations),
+            },
+        )
+    )
+    db.delete(contact)
+
+
 @celery_app.task(name="process_incoming_message")
 def process_incoming_message(payload: dict) -> dict:
     if payload.get("qa_probe"):
@@ -163,6 +500,7 @@ def process_incoming_message(payload: dict) -> dict:
             conversation = db.get(Conversation, message.conversation_id)
             if conversation is None:
                 raise ValueError(f"conversation not found: {message.conversation_id}")
+            contact = db.get(Contact, conversation.contact_id)
 
             context = MemoryService().build_context(str(conversation.id))
             route = RoutingService().route_intent(
@@ -184,12 +522,20 @@ def process_incoming_message(payload: dict) -> dict:
                 )
 
             inbound_text = (message.transcription or message.text_content or "").strip()
-            memory_result = ContactMemoryService().save_from_inbound_text(
-                db=db,
-                contact_id=conversation.contact_id,
-                source_message_id=message.id,
-                inbound_text=inbound_text,
-            )
+            if settings.llm_enabled:
+                strict_temporary_mode = bool(contact is not None and contact.is_temporary and not contact.phone)
+                memory_result = ContactMemoryService().save_from_inbound_text(
+                    db=db,
+                    contact_id=conversation.contact_id,
+                    source_message_id=message.id,
+                    inbound_text=inbound_text,
+                    strict_temporary_mode=strict_temporary_mode,
+                )
+            else:
+                memory_result = {
+                    "status": "skipped_menu_mode",
+                    "saved_keys": [],
+                }
             reply_result = generate_reply(
                 {
                     "conversation_id": str(conversation.id),
@@ -390,16 +736,78 @@ def generate_reply(payload: dict) -> dict:
                     "responderei apenas a sua ultima mensagem."
                 )
 
-            llm_result = LLMReplyService().generate_reply(
-                user_text=source_text,
-                context_messages=context.get("memory_items") or [],
+            customer_profile_lookup = _resolve_customer_profile_for_reply(contact=contact)
+            customer_exists = bool(contact is not None and not contact.is_temporary)
+            customer_status_source = "local"
+            if customer_profile_lookup.get("status") == "completed":
+                customer_exists = bool(customer_profile_lookup.get("customer_exists"))
+                customer_status_source = "partner_api"
+
+            effective_key_memories = _inject_runtime_customer_status_memory(
                 key_memories=key_memories,
+                customer_exists=customer_exists,
+                source=customer_status_source,
             )
-            llm_status = str((llm_result or {}).get("status") or "")
-            llm_model = str((llm_result or {}).get("model") or "")
-            reply_text = str((llm_result or {}).get("reply_text") or "").strip()
-            if llm_status not in {"completed", "blocked_out_of_scope"} or not reply_text:
-                raise RuntimeError(f"llm_reply_generation_failed: status={llm_status}")
+
+            memory_saved_keys: list[str] = []
+            if settings.llm_enabled:
+                llm_result = LLMReplyService().generate_reply(
+                    user_text=source_text,
+                    context_messages=context.get("memory_items") or [],
+                    key_memories=effective_key_memories,
+                )
+                llm_status = str((llm_result or {}).get("status") or "")
+                llm_model = str((llm_result or {}).get("model") or "")
+                reply_text = str((llm_result or {}).get("reply_text") or "").strip()
+                if llm_status not in {"completed", "blocked_out_of_scope"} or not reply_text:
+                    raise RuntimeError(f"llm_reply_generation_failed: status={llm_status}")
+            else:
+                is_new_chat = not bool(str(conversation.menu_state or "").strip())
+                menu_result = MenuBotService().handle_message(
+                    message_text=source_text,
+                    conversation=SimpleNamespace(menu_state=conversation.menu_state, is_new_chat=is_new_chat),
+                    contact=contact,
+                    customer_exists=customer_exists,
+                    memories=effective_key_memories,
+                )
+                llm_result = {"status": "completed", "model": "menu_bot"}
+                llm_status = "completed"
+                llm_model = "menu_bot"
+                reply_text = str(menu_result.get("reply_text") or "").strip()
+                if not reply_text:
+                    raise RuntimeError("menu_bot_failed_without_reply")
+                conversation.menu_state = str(menu_result.get("next_state") or conversation.menu_state or "main_menu")
+                if bool(menu_result.get("close_conversation")):
+                    conversation.status = "closed"
+                    conversation.menu_state = "end"
+                menu_needs_human = bool(menu_result.get("needs_human"))
+                conversation.needs_human = menu_needs_human
+                conversation.human_reason = str(menu_result.get("human_reason") or "").strip() or None
+                conversation.human_requested_at = now_utc if menu_needs_human else None
+                if menu_needs_human:
+                    db.add(
+                        AuditLog(
+                            entity_type="conversation",
+                            entity_id=conversation.id,
+                            event_type="human_requested",
+                            details={
+                                "conversation_id": str(conversation.id),
+                                "human_reason": conversation.human_reason,
+                                "contact_name": str((contact.name if contact else "") or "").strip() or None,
+                                "contact_phone": str((contact.phone if contact else "") or "").strip() or None,
+                                "last_inbound_message_text": conversation.last_inbound_message_text,
+                            },
+                        )
+                    )
+                memory_saved_keys = _upsert_menu_memory_updates(
+                    db=db,
+                    contact_id=conversation.contact_id,
+                    source_message_id=source_message.id if source_message is not None else None,
+                    memory_updates=_strip_api_derived_memory_updates(
+                        memory_updates=list(menu_result.get("memory_updates") or []),
+                        source=customer_status_source,
+                    ),
+                )
             if spam_notice:
                 reply_text = f"{spam_notice}\n\n{reply_text}".strip()
             if _should_mark_conversation_closed(llm_model=llm_model, reply_text=reply_text):
@@ -465,6 +873,33 @@ def generate_reply(payload: dict) -> dict:
                     **outbound.raw_payload,
                     "dispatch_result": dispatch_result,
                 }
+                dispatch_status = str((dispatch_result or {}).get("status") or "").strip().lower()
+                if dispatch_status not in {"completed", "ok", "success"} and contact is not None and contact.phone:
+                    whatsapp_dispatch_result = WhatsAppService().send_text_message(
+                        {
+                            "to": contact.phone,
+                            "text": reply_text,
+                        }
+                    )
+                    outbound.raw_payload = {
+                        **outbound.raw_payload,
+                        "dispatch_result": whatsapp_dispatch_result,
+                        "meta_dispatch_result": dispatch_result,
+                        "fallback_channel": "whatsapp",
+                    }
+                    dispatch_result = whatsapp_dispatch_result
+                    db.add(
+                        AuditLog(
+                            entity_type="conversation",
+                            entity_id=conversation.id,
+                            event_type="channel_fallback_to_whatsapp",
+                            details={
+                                "platform": platform,
+                                "source_message_id": source_message_id,
+                                "primary_dispatch_status": dispatch_status,
+                            },
+                        )
+                    )
 
             db.add(
                 AuditLog(
@@ -477,11 +912,28 @@ def generate_reply(payload: dict) -> dict:
                         "llm_status": llm_status,
                         "llm_model": llm_model,
                         "dispatch_status": (dispatch_result or {}).get("status"),
+                        "menu_memory_saved_keys": memory_saved_keys,
                     },
                 )
             )
+            _close_stale_open_conversations(db=db, now_utc=now_utc)
+            _prune_conversation_messages(db=db, conversation_id=conversation.id)
+            _cleanup_temporary_contact_if_eligible(
+                db=db,
+                contact_id=conversation.contact_id,
+                now_utc=now_utc,
+            )
             db.commit()
             db.refresh(outbound)
+            for stage_minutes in FOLLOW_UP_WINDOWS_MINUTES:
+                send_follow_up.apply_async(
+                    kwargs={
+                        "conversation_id": str(conversation.id),
+                        "stage_minutes": int(stage_minutes),
+                        "reply_message_id": str(outbound.id),
+                    },
+                    countdown=int(stage_minutes) * 60,
+                )
 
         _finish_job(job_id, "completed")
         return {
@@ -571,6 +1023,170 @@ def sync_youtube_comments(payload: dict) -> dict:
         _finish_job(job_id, "failed", error_text)
         return {
             "task": "sync_youtube_comments",
+            "status": "failed",
+            "job_id": str(job_id),
+            "error": error_text,
+        }
+
+
+@celery_app.task(name="send_follow_up")
+def send_follow_up(*, conversation_id: str, stage_minutes: int, reply_message_id: str | None = None) -> dict:
+    job_id = _create_job(
+        "send_follow_up",
+        {
+            "conversation_id": conversation_id,
+            "stage_minutes": stage_minutes,
+            "reply_message_id": reply_message_id,
+        },
+    )
+    try:
+        conversation_uuid = _parse_uuid(conversation_id, "conversation_id")
+        with SessionLocal() as db:
+            conversation = db.get(Conversation, conversation_uuid)
+            if conversation is None:
+                raise ValueError(f"conversation not found: {conversation_uuid}")
+            if str(conversation.status or "").strip().lower() != "open":
+                _finish_job(job_id, "completed")
+                return {
+                    "task": "send_follow_up",
+                    "status": "ignored_conversation_closed",
+                    "job_id": str(job_id),
+                    "conversation_id": conversation_id,
+                }
+
+            latest_inbound = (
+                db.execute(
+                    select(Message)
+                    .where(
+                        Message.conversation_id == conversation.id,
+                        Message.direction == "inbound",
+                    )
+                    .order_by(Message.created_at.desc())
+                )
+                .scalars()
+                .first()
+            )
+            if latest_inbound is None:
+                _finish_job(job_id, "completed")
+                return {
+                    "task": "send_follow_up",
+                    "status": "ignored_without_inbound",
+                    "job_id": str(job_id),
+                    "conversation_id": conversation_id,
+                }
+
+            now_utc = datetime.now(timezone.utc)
+            due_at = latest_inbound.created_at + timedelta(minutes=max(1, int(stage_minutes)))
+            if now_utc < due_at:
+                _finish_job(job_id, "completed")
+                return {
+                    "task": "send_follow_up",
+                    "status": "ignored_not_due",
+                    "job_id": str(job_id),
+                    "conversation_id": conversation_id,
+                }
+
+            outbound_after_latest_inbound = (
+                db.execute(
+                    select(Message.id)
+                    .where(
+                        Message.conversation_id == conversation.id,
+                        Message.direction == "outbound",
+                        Message.created_at > latest_inbound.created_at,
+                    )
+                )
+                .scalars()
+                .first()
+            )
+            if outbound_after_latest_inbound is not None:
+                _finish_job(job_id, "completed")
+                return {
+                    "task": "send_follow_up",
+                    "status": "ignored_already_replied",
+                    "job_id": str(job_id),
+                    "conversation_id": conversation_id,
+                }
+
+            if _has_followup_already_sent(db=db, conversation_id=conversation.id, stage_minutes=stage_minutes):
+                _finish_job(job_id, "completed")
+                return {
+                    "task": "send_follow_up",
+                    "status": "ignored_duplicate_stage",
+                    "job_id": str(job_id),
+                    "conversation_id": conversation_id,
+                }
+
+            contact = db.get(Contact, conversation.contact_id)
+            if contact is None or not contact.phone:
+                _finish_job(job_id, "completed")
+                return {
+                    "task": "send_follow_up",
+                    "status": "ignored_missing_phone",
+                    "job_id": str(job_id),
+                    "conversation_id": conversation_id,
+                }
+
+            follow_up_text = (
+                "Passando para retomar seu atendimento. "
+                "Se quiser, te ajudo agora com valores e agendamento da FC VIP."
+            )
+            dispatch_result = WhatsAppService().send_text_message({"to": contact.phone, "text": follow_up_text})
+            dispatch_status = str((dispatch_result or {}).get("status") or "").strip().lower()
+            if dispatch_status not in {"completed", "ok", "success"}:
+                _finish_job(job_id, "failed")
+                return {
+                    "task": "send_follow_up",
+                    "status": "failed_dispatch",
+                    "job_id": str(job_id),
+                    "conversation_id": conversation_id,
+                    "dispatch_status": dispatch_status or "unknown",
+                }
+
+            outbound = Message(
+                conversation_id=conversation.id,
+                platform="whatsapp",
+                direction="outbound",
+                message_type="text",
+                text_content=follow_up_text,
+                transcription=None,
+                media_url=None,
+                raw_payload={
+                    "source": "auto_follow_up",
+                    "stage_minutes": int(stage_minutes),
+                    "reply_message_id": reply_message_id,
+                    "dispatch_result": dispatch_result,
+                },
+                ai_generated=False,
+            )
+            db.add(outbound)
+            conversation.last_message_at = now_utc
+            db.add(
+                AuditLog(
+                    entity_type="conversation",
+                    entity_id=conversation.id,
+                    event_type="follow_up_sent",
+                    details={
+                        "conversation_id": str(conversation.id),
+                        "stage_minutes": int(stage_minutes),
+                        "reply_message_id": reply_message_id,
+                    },
+                )
+            )
+            db.commit()
+
+        _finish_job(job_id, "completed")
+        return {
+            "task": "send_follow_up",
+            "status": "completed",
+            "job_id": str(job_id),
+            "conversation_id": conversation_id,
+            "stage_minutes": int(stage_minutes),
+        }
+    except Exception as exc:  # noqa: BLE001
+        error_text = _safe_error_text(exc)
+        _finish_job(job_id, "failed", error_text)
+        return {
+            "task": "send_follow_up",
             "status": "failed",
             "job_id": str(job_id),
             "error": error_text,

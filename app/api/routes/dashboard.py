@@ -27,6 +27,14 @@ def _normalize_whatsapp_destination(value: str | None) -> str | None:
     raw = str(value or "").strip()
     if not raw:
         return None
+    lowered = raw.lower()
+    for suffix in ("@s.whatsapp.net", "@c.us"):
+        if lowered.endswith(suffix):
+            raw = raw[: -len(suffix)].strip()
+            lowered = raw.lower()
+            break
+    if lowered.endswith("@lid") or "@" in raw:
+        return None
     digits = "".join(ch for ch in raw if ch.isdigit())
     return digits or raw
 
@@ -101,6 +109,7 @@ def dashboard_op_state(
 ) -> dict:
     leads_total = db.query(Contact.id).count()
     open_conversations_total = db.query(Conversation.id).filter(Conversation.status == "open").count()
+    human_pending_total = db.query(Conversation.id).filter(Conversation.needs_human.is_(True)).count()
     inbound_total = db.query(Message.id).filter(Message.direction == "inbound").count()
     outbound_total = db.query(Message.id).filter(Message.direction == "outbound").count()
 
@@ -118,6 +127,7 @@ def dashboard_op_state(
     )
 
     conversation_items: list[dict] = []
+    human_pending_items: list[dict] = []
     for conversation in conversations:
         contact = db.get(Contact, conversation.contact_id)
         last_message = (
@@ -131,6 +141,12 @@ def dashboard_op_state(
                 "id": str(conversation.id),
                 "platform": conversation.platform,
                 "status": conversation.status,
+                "menu_state": conversation.menu_state,
+                "needs_human": bool(conversation.needs_human),
+                "human_reason": conversation.human_reason,
+                "human_requested_at": (
+                    conversation.human_requested_at.isoformat() if conversation.human_requested_at else None
+                ),
                 "last_activity_at": _conversation_sort_key(conversation).isoformat(),
                 "contact": {
                     "id": str(contact.id) if contact else None,
@@ -145,6 +161,19 @@ def dashboard_op_state(
                 ),
             }
         )
+        if conversation.needs_human:
+            human_pending_items.append(
+                {
+                    "conversation_id": str(conversation.id),
+                    "human_reason": conversation.human_reason,
+                    "human_requested_at": (
+                        conversation.human_requested_at.isoformat() if conversation.human_requested_at else None
+                    ),
+                    "contact_name": (contact.name if contact else None),
+                    "contact_phone": (contact.phone if contact else None),
+                    "last_message_preview": _message_preview(last_message),
+                }
+            )
 
     available_ids = {item["id"] for item in conversation_items}
     selected_conversation_id: str | None = str(conversation_id) if conversation_id else None
@@ -152,7 +181,13 @@ def dashboard_op_state(
         selected_conversation_id = conversation_items[0]["id"] if conversation_items else None
 
     selected_messages: list[dict] = []
-    selected_meta: dict = {"conversation_id": selected_conversation_id, "platform": None, "contact_name": None}
+    selected_meta: dict = {
+        "conversation_id": selected_conversation_id,
+        "platform": None,
+        "contact_name": None,
+        "last_inbound_message_text": None,
+        "last_inbound_message_at": None,
+    }
     if selected_conversation_id:
         selected_conversation = db.get(Conversation, UUID(selected_conversation_id))
         if selected_conversation is not None:
@@ -165,6 +200,12 @@ def dashboard_op_state(
                 "whatsapp_destination": _resolve_contact_whatsapp_destination(
                     db=db,
                     contact_id=selected_conversation.contact_id,
+                ),
+                "last_inbound_message_text": selected_conversation.last_inbound_message_text,
+                "last_inbound_message_at": (
+                    selected_conversation.last_inbound_message_at.isoformat()
+                    if selected_conversation.last_inbound_message_at
+                    else None
                 ),
             }
             rows = (
@@ -182,9 +223,11 @@ def dashboard_op_state(
             "open_conversations_total": open_conversations_total,
             "inbound_total": inbound_total,
             "outbound_total": outbound_total,
+            "human_pending_total": human_pending_total,
         },
         "selected": selected_meta,
         "conversations": conversation_items,
+        "human_pending": human_pending_items,
         "messages": selected_messages,
         "generated_at": datetime.now(timezone.utc).isoformat(),
     }

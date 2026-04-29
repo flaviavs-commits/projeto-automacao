@@ -6,6 +6,8 @@ class WhatsAppService(BaseExternalService):
     """Handles WhatsApp inbound and outbound messaging workflows."""
 
     service_name = "whatsapp"
+    _NUMERIC_JID_SUFFIXES = ("@s.whatsapp.net", "@c.us")
+    _LID_SUFFIX = "@lid"
 
     def _active_provider(self) -> str:
         return settings.normalized_whatsapp_provider
@@ -64,8 +66,16 @@ class WhatsAppService(BaseExternalService):
         raw = str(recipient or "").strip()
         if not raw:
             return ""
+        lowered = raw.lower()
+        for suffix in self._NUMERIC_JID_SUFFIXES:
+            if lowered.endswith(suffix):
+                raw = raw[: -len(suffix)].strip()
+                lowered = raw.lower()
+                break
+        if lowered.endswith(self._LID_SUFFIX):
+            return ""
         if "@" in raw:
-            raw = raw.split("@", 1)[0].strip()
+            return ""
         digits = "".join(ch for ch in raw if ch.isdigit())
         return digits or raw
 

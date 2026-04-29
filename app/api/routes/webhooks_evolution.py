@@ -12,21 +12,97 @@ from app.workers.tasks import process_incoming_message
 router = APIRouter(tags=["webhooks"])
 logger = get_logger(__name__)
 
+_WHATSAPP_NUMERIC_JID_SUFFIXES = ("@s.whatsapp.net", "@c.us")
+_WHATSAPP_LID_SUFFIX = "@lid"
+
 
 def _normalize_whatsapp_jid(value: str) -> str:
     raw_value = str(value or "").strip()
     if not raw_value:
         return ""
 
-    normalized = raw_value
-    lowered = normalized.lower()
-    for suffix in ("@s.whatsapp.net", "@c.us"):
+    lowered = raw_value.lower()
+    for suffix in _WHATSAPP_NUMERIC_JID_SUFFIXES:
         if lowered.endswith(suffix):
-            normalized = normalized[: -len(suffix)]
-            break
+            normalized = raw_value[: -len(suffix)]
+            digits = "".join(ch for ch in normalized if ch.isdigit())
+            return digits or normalized
 
+    if lowered.endswith(_WHATSAPP_LID_SUFFIX):
+        normalized = raw_value[: -len(_WHATSAPP_LID_SUFFIX)]
+        digits = "".join(ch for ch in normalized if ch.isdigit())
+        return f"{digits}{_WHATSAPP_LID_SUFFIX}" if digits else lowered
+
+    if "@" in lowered:
+        return lowered
+
+    digits = "".join(ch for ch in raw_value if ch.isdigit())
+    return digits or raw_value
+
+
+def _normalize_whatsapp_phone_number_candidate(value: str | None) -> str | None:
+    normalized = _normalize_whatsapp_jid(str(value or "").strip())
+    if not normalized:
+        return None
+    if normalized.endswith(_WHATSAPP_LID_SUFFIX) or "@" in normalized:
+        return None
     digits = "".join(ch for ch in normalized if ch.isdigit())
-    return digits or normalized
+    return digits or None
+
+
+def _unique_preserving_order(values: list[str]) -> list[str]:
+    unique_values: list[str] = []
+    seen: set[str] = set()
+    for value in values:
+        cleaned = str(value or "").strip()
+        if not cleaned or cleaned in seen:
+            continue
+        unique_values.append(cleaned)
+        seen.add(cleaned)
+    return unique_values
+
+
+def _extract_preferred_whatsapp_phone_number(item: dict, key_payload: dict) -> str | None:
+    candidate_values = [
+        key_payload.get("senderPn"),
+        key_payload.get("participantPn"),
+        key_payload.get("remoteJidAlt"),
+        item.get("senderPn"),
+        item.get("participantPn"),
+        item.get("remoteJidAlt"),
+        key_payload.get("remoteJid"),
+        item.get("remoteJid"),
+    ]
+    for candidate in candidate_values:
+        normalized_phone = _normalize_whatsapp_phone_number_candidate(str(candidate or "").strip())
+        if normalized_phone:
+            return normalized_phone
+    return None
+
+
+def _build_whatsapp_identity_candidates(item: dict, key_payload: dict) -> list[str]:
+    normalized_candidates: list[str] = []
+    raw_candidates = [
+        key_payload.get("senderPn"),
+        key_payload.get("participantPn"),
+        key_payload.get("remoteJidAlt"),
+        key_payload.get("remoteJid"),
+        key_payload.get("senderLid"),
+        key_payload.get("participant"),
+        key_payload.get("participantLid"),
+        item.get("senderPn"),
+        item.get("participantPn"),
+        item.get("remoteJidAlt"),
+        item.get("remoteJid"),
+        item.get("senderLid"),
+        item.get("participant"),
+        item.get("participantLid"),
+    ]
+    for candidate in raw_candidates:
+        normalized = _normalize_whatsapp_jid(str(candidate or "").strip())
+        if normalized:
+            normalized_candidates.append(normalized)
+    return _unique_preserving_order(normalized_candidates)
 
 
 def _extract_text_content(message_payload: dict) -> str | None:
@@ -39,6 +115,29 @@ def _extract_text_content(message_payload: dict) -> str | None:
     if extended_text:
         return extended_text
     return None
+
+
+def _extract_media_payload(message_payload: dict) -> tuple[str | None, str | None]:
+    media_map = (
+        ("imageMessage", "image"),
+        ("videoMessage", "video"),
+        ("audioMessage", "audio"),
+        ("documentMessage", "document"),
+        ("stickerMessage", "sticker"),
+    )
+    for key, message_type in media_map:
+        media_payload = to_payload_dict(message_payload.get(key))
+        if not media_payload:
+            continue
+        media_url = str(
+            media_payload.get("url")
+            or media_payload.get("directPath")
+            or media_payload.get("mediaUrl")
+            or ""
+        ).strip()
+        if media_url:
+            return media_url, message_type
+    return None, None
 
 
 def _extract_evolution_messages(envelope_payload: dict) -> list[dict]:
@@ -59,12 +158,20 @@ def _extract_evolution_messages(envelope_payload: dict) -> list[dict]:
 
         remote_jid = str(key_payload.get("remoteJid") or item.get("remoteJid") or "").strip()
         platform_user_id = _normalize_whatsapp_jid(remote_jid)
+        identity_candidates = _build_whatsapp_identity_candidates(item, key_payload)
+        preferred_phone_number = _extract_preferred_whatsapp_phone_number(item, key_payload)
+        if preferred_phone_number:
+            identity_candidates = _unique_preserving_order(
+                [preferred_phone_number, *identity_candidates]
+            )
+        platform_user_id = identity_candidates[0] if identity_candidates else platform_user_id
         if not platform_user_id:
             continue
 
         message_payload = to_payload_dict(item.get("message"))
         text_content = _extract_text_content(message_payload)
-        if not text_content:
+        media_url, media_message_type = _extract_media_payload(message_payload)
+        if not text_content and not media_url:
             continue
 
         external_message_id = str(key_payload.get("id") or item.get("id") or "").strip()
@@ -74,11 +181,13 @@ def _extract_evolution_messages(envelope_payload: dict) -> list[dict]:
             {
                 "platform": "whatsapp",
                 "platform_user_id": platform_user_id,
+                "alternate_platform_user_ids": identity_candidates[1:],
+                "preferred_phone_number": preferred_phone_number,
                 "profile_name": profile_name,
                 "external_message_id": external_message_id or None,
-                "message_type": "text",
+                "message_type": media_message_type or "text",
                 "text_content": text_content,
-                "media_url": None,
+                "media_url": media_url,
                 "phone_number_id": None,
                 "raw_payload": item,
             }

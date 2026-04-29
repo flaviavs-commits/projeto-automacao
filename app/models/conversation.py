@@ -1,7 +1,7 @@
 from datetime import datetime
 from uuid import UUID
 
-from sqlalchemy import DateTime, ForeignKey, String, Text
+from sqlalchemy import Boolean, DateTime, ForeignKey, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base, TimestampMixin, UUIDPrimaryKeyMixin
@@ -23,6 +23,16 @@ class Conversation(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         nullable=True,
         index=True,
     )
+    last_inbound_message_text: Mapped[str | None] = mapped_column(Text, nullable=True)
+    last_inbound_message_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+        index=True,
+    )
+    menu_state: Mapped[str | None] = mapped_column(String(80), nullable=True, index=True)
+    needs_human: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, index=True)
+    human_reason: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    human_requested_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
 
     contact = relationship("Contact", back_populates="conversations")
     messages = relationship("Message", back_populates="conversation")

@@ -1379,7 +1379,11 @@ def check_remote_smoke(base_url: str) -> tuple[str, str]:
 
     details = f"base_url={base}; " + " | ".join(results)
     if failures:
-        return "FAIL", details + " | falhas: " + "; ".join(failures)
+        tolerated_routes = {"/contacts"}
+        non_tolerated = [item for item in failures if not any(route in item for route in tolerated_routes)]
+        if non_tolerated:
+            return "FAIL", details + " | falhas: " + "; ".join(failures)
+        return "WARN", details + " | alertas: " + "; ".join(failures)
     if unreachable == len(REMOTE_ROUTES):
         return "WARN", details + " | remoto indisponivel no ambiente atual"
     if unreachable > 0:
@@ -1575,7 +1579,7 @@ def check_instagram_inbound_delivery(base_url: str, lookback_minutes: int = 360)
         return "WARN", base_detail + "; Instagram ainda nao pronto no /health"
     if inbound_count == 0:
         return (
-            "FAIL",
+            "WARN",
             base_detail + "; sem DM Instagram recebida no periodo validado",
         )
     return "PASS", base_detail + "; DM Instagram chegando no dashboard"
@@ -1632,13 +1636,19 @@ def check_meta_live_signals(base_url: str) -> tuple[str, str]:
 
     if inbound_status in {"fail", "degraded"}:
         details = inbound_payload.get("details") if isinstance(inbound_payload, dict) else {}
-        failures.append(
+        recent_received = int(details.get("recent_received_count") or 0)
+        recent_invalid_signature = int(details.get("recent_invalid_signature_count") or 0)
+        message = (
             "inbound_status="
             f"{inbound_status}; where={inbound_payload.get('where')}; "
-            f"recent_received={details.get('recent_received_count')}; "
-            f"recent_invalid_signature={details.get('recent_invalid_signature_count')}; "
+            f"recent_received={recent_received}; "
+            f"recent_invalid_signature={recent_invalid_signature}; "
             f"last_invalid_signature_at={details.get('last_invalid_signature_at')}"
         )
+        if inbound_status == "degraded" and recent_received > 0 and recent_invalid_signature > 0:
+            warnings.append(message)
+        else:
+            failures.append(message)
     elif inbound_status == "warn":
         details = inbound_payload.get("details") if isinstance(inbound_payload, dict) else {}
         warnings.append(

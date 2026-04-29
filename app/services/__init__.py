@@ -1,6 +1,7 @@
 from app.services.analytics_service import AnalyticsService
 from app.services.contact_memory_service import ContactMemoryService
 from app.services.customer_identity_service import CustomerIdentityService
+from app.services.fcvip_partner_api_service import FCVIPPartnerAPIService
 from app.services.instagram_publish_service import InstagramPublishService
 from app.services.instagram_service import InstagramService
 from app.services.llm_reply_service import LLMReplyService
@@ -18,6 +19,7 @@ __all__ = [
     "AnalyticsService",
     "ContactMemoryService",
     "CustomerIdentityService",
+    "FCVIPPartnerAPIService",
     "InstagramPublishService",
     "InstagramService",
     "LLMReplyService",

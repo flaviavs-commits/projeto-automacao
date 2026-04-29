@@ -129,6 +129,21 @@ class WhatsAppServiceTests(unittest.TestCase):
         self.assertIn("WHATSAPP_GATEWAY_BASE_URL", result.get("required") or [])
         self.assertIn("WHATSAPP_SESSION_NAME", result.get("required") or [])
 
+    def test_send_text_message_rejects_lid_recipient(self) -> None:
+        settings.whatsapp_provider = "baileys"
+        settings.whatsapp_gateway_base_url = "https://gateway.example"
+        settings.whatsapp_gateway_api_key = "gateway-api-key"
+        settings.whatsapp_session_name = "sales-session"
+
+        result = self.service.send_text_message(
+            {
+                "to": "133595024851015@lid",
+                "text": "Ola",
+            }
+        )
+
+        self.assertEqual(result.get("status"), "invalid_payload")
+
     def test_send_text_message_maps_http_error_to_request_failed(self) -> None:
         request = httpx.Request(
             "POST",

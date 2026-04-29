@@ -16,6 +16,10 @@ class ConversationUpdate(BaseModel):
     status: str | None = Field(default=None, min_length=1, max_length=50)
     summary: str | None = None
     last_message_at: datetime | None = None
+    menu_state: str | None = None
+    needs_human: bool | None = None
+    human_reason: str | None = None
+    human_requested_at: datetime | None = None
 
 
 class ConversationRead(BaseModel):
@@ -27,5 +31,11 @@ class ConversationRead(BaseModel):
     status: str
     summary: str | None
     last_message_at: datetime | None
+    last_inbound_message_text: str | None
+    last_inbound_message_at: datetime | None
+    menu_state: str | None
+    needs_human: bool
+    human_reason: str | None
+    human_requested_at: datetime | None
     created_at: datetime
     updated_at: datetime

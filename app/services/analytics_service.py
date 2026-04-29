@@ -4,6 +4,7 @@ from sqlalchemy import func, select
 
 from app.core.database import SessionLocal
 from app.models.contact import Contact
+from app.models.audit_log import AuditLog
 from app.models.conversation import Conversation
 from app.models.job import Job
 from app.models.message import Message
@@ -67,6 +68,30 @@ class AnalyticsService:
                     )
                     or 0
                 )
+                temporary_contacts = int(
+                    db.scalar(
+                        select(func.count())
+                        .select_from(Contact)
+                        .where(Contact.is_temporary.is_(True))
+                    )
+                    or 0
+                )
+                follow_ups_sent = int(
+                    db.scalar(
+                        select(func.count())
+                        .select_from(AuditLog)
+                        .where(AuditLog.event_type == "follow_up_sent")
+                    )
+                    or 0
+                )
+                channel_fallbacks_to_whatsapp = int(
+                    db.scalar(
+                        select(func.count())
+                        .select_from(AuditLog)
+                        .where(AuditLog.event_type == "channel_fallback_to_whatsapp")
+                    )
+                    or 0
+                )
 
                 posts_by_status_rows = (
                     db.execute(
@@ -110,6 +135,9 @@ class AnalyticsService:
                     "inbound_messages": inbound_messages,
                     "outbound_messages": outbound_messages,
                     "ai_generated_messages": ai_generated_messages,
+                    "temporary_contacts": temporary_contacts,
+                    "follow_ups_sent": follow_ups_sent,
+                    "channel_fallbacks_to_whatsapp": channel_fallbacks_to_whatsapp,
                 },
                 "grouped": {
                     "posts_by_status": self._grouped_counts(posts_by_status_rows),

@@ -50,5 +50,6 @@ class ContactRead(BaseModel):
     youtube_channel_id: str | None
     tiktok_user_id: str | None
     email: str | None
+    is_temporary: bool
     created_at: datetime
     updated_at: datetime

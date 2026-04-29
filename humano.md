@@ -896,3 +896,106 @@ Resumo:
 Validacao da rodada:
 - `cmd /c .\\.venv\\Scripts\\python.exe -m unittest discover -s tests -p "test_*.py" -v` -> `OK` (55 testes).
 - `cmd /c .\\.venv\\Scripts\\python.exe -m compileall app qa_tudo.py` -> `OK`.
+
+## Registro de task - 2026-04-29 (retencao curta, identidade cliente e temporarios)
+
+Task executada: colocar o backend em modo de retencao curta de mensagens, sem perder memoria util de atendimento e sem quebrar o fluxo atual de WhatsApp/Baileys.
+
+O que foi entregue:
+- novas variaveis de ambiente/documentacao:
+  - `MESSAGE_RETENTION_MAX_PER_CONVERSATION=5`
+  - `CONVERSATION_AUTO_CLOSE_AFTER_MINUTES=60`
+  - `TEMP_CONTACT_TTL_MINUTES=120`
+- dados novos no banco:
+  - `contacts.is_temporary`
+  - `conversations.last_inbound_message_text`
+  - `conversations.last_inbound_message_at`
+- migration criada:
+  - `alembic/versions/20260429_0003_message_retention_identity_flags.py`
+- identificacao de cliente atualizada:
+  - prioriza telefone normalizado;
+  - usa `@lid` como apoio de identidade;
+  - em conflito telefone x `@lid`, nao faz merge automatico e registra conflito.
+- ingestao webhook:
+  - continua deduplicando por `external_message_id`;
+  - grava ultima inbound da conversa;
+  - registra auditoria tecnica de enriquecimento/conflito de identidade.
+- politica de retencao:
+  - conversa passa a manter so o limite configurado de mensagens recentes;
+  - mensagens antigas sao removidas;
+  - `contact_memories` nao sao apagadas por essa rotina;
+  - auditoria `message_retention_pruned` registra o prune.
+- contatos temporarios:
+  - quando nao existe match confiavel, contato entra como temporario;
+  - limpeza so ocorre com regras restritas (stale/fechado + TTL + sem identidade confiavel + sem memoria pilar).
+- QA ajustado:
+  - ausencia de DM Instagram recente virou `WARN` (operacional externo), nao `FAIL` de codigo.
+
+Validacao:
+- `cmd /c .\\.venv\\Scripts\\python.exe -m unittest discover -s tests -p "test_*.py" -v` -> `OK` (77 testes).
+- `cmd /c .\\.venv\\Scripts\\python.exe qa_tudo.py --no-dashboard --no-pause` -> `PASS=13`, `WARN=2`, `FAIL=0`.
+
+## Registro de task - 2026-04-29 (menu fechado WhatsApp sem LLM)
+
+Resumo:
+- foi implementado um bot de menu numerico fechado para atendimento WhatsApp;
+- nao usa LLM, nao classifica intencao e nao interpreta texto livre.
+
+O que mudou:
+- novo servico: `app/services/menu_bot_service.py`;
+- worker (`app/workers/tasks.py`) usa menu quando `LLM_ENABLED=false`;
+- estado do menu e pendencia humana salvos em `conversations`:
+  - `menu_state`
+  - `needs_human`
+  - `human_reason`
+  - `human_requested_at`
+- migration criada:
+  - `alembic/versions/20260429_0004_menu_bot_state.py`
+- dashboard operacional atualizado com:
+  - contador `human_pending_total`
+  - lista `human_pending` (motivo, nome/telefone, ultima mensagem)
+- endereco de localizacao mantido/corrigido para:
+  - Rua Corifeu Marques, 32 - Jardim Amalia 1 - Volta Redonda/RJ
+
+TDD (obrigatorio) foi seguido:
+1. testes criados antes:
+   - `tests/test_menu_bot_service.py`
+   - `tests/test_dashboard_human_pending.py`
+2. primeiro teste rodou em falha (modulo ainda nao existia).
+3. implementacao feita.
+4. testes passando apos implementacao.
+
+Validacao final:
+- `python -m unittest discover -s tests -p "test_*.py" -v` -> `OK` (98 testes)
+- `qa_tudo.py --no-dashboard --no-pause` -> `PASS=11 WARN=4 FAIL=0`
+
+## Follow-up - 2026-04-29 (revisao e ativacao em producao)
+
+Foi feita revisao final e fechamento operacional:
+- menu bot ajustado para fluxo fechado em ASCII e com estados tecnicos de estrutura:
+  - `backgrounds_menu`, `lighting_menu`, `supports_menu`, `scenography_menu`, `infrastructure_menu`;
+- worker ajustado para nao extrair memoria de texto livre no modo menu (`LLM_ENABLED=false`);
+- endereco no prompt oficial corrigido para `Jardim Amalia 1`.
+
+Validacoes:
+- testes de menu/dashboard -> OK;
+- suite completa (98 testes) -> OK;
+- QA local completo -> PASS sem FAIL.
+
+Ativacao em producao:
+- migracoes `20260429_0003` e `20260429_0004` aplicadas no banco de producao;
+- deploy de `projeto-automacao` e `worker` concluido com status `SUCCESS`;
+- QA pos deploy: `PASS=12 WARN=3 FAIL=0` (sem falha funcional).
+
+## Ajuste pontual - 2026-04-29 (saudacao com nome de teste)
+
+Foi identificado que o menu estava saudando alguns clientes com nomes antigos de teste salvos no contato.
+
+Correcao feita:
+- menu passou a tratar nomes curtos/placeholder como nao confiaveis;
+- quando cliente existente nao tem nome confiavel, volta para coleta de nome (`collect_new_customer_data`);
+- teste automatizado adicionado para esse cenario.
+
+Apos deploy:
+- API/worker em `SUCCESS`;
+- 2 contatos com nomes de teste tiveram `name` limpo (`null`) para efeito imediato no atendimento.

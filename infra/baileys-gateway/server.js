@@ -1329,11 +1329,23 @@ async function forwardIncomingMessages(sessionName, payload) {
       key: {
         id: message.key && message.key.id ? message.key.id : null,
         remoteJid: message.key && message.key.remoteJid ? message.key.remoteJid : null,
+        remoteJidAlt: message.key && message.key.remoteJidAlt ? message.key.remoteJidAlt : null,
+        participant: message.key && message.key.participant ? message.key.participant : null,
+        participantPn: message.key && message.key.participantPn ? message.key.participantPn : null,
+        participantLid: message.key && message.key.participantLid ? message.key.participantLid : null,
+        senderPn: message.key && message.key.senderPn ? message.key.senderPn : null,
+        senderLid: message.key && message.key.senderLid ? message.key.senderLid : null,
         fromMe: Boolean(message.key && message.key.fromMe),
       },
       message: unwrapMessageContent(message.message),
       pushName: message.pushName || message.notifyName || null,
       senderName: message.pushName || message.notifyName || null,
+      remoteJidAlt: message.key && message.key.remoteJidAlt ? message.key.remoteJidAlt : null,
+      participant: message.key && message.key.participant ? message.key.participant : null,
+      participantPn: message.key && message.key.participantPn ? message.key.participantPn : null,
+      participantLid: message.key && message.key.participantLid ? message.key.participantLid : null,
+      senderPn: message.key && message.key.senderPn ? message.key.senderPn : null,
+      senderLid: message.key && message.key.senderLid ? message.key.senderLid : null,
       sessionName,
     }))
     .filter((row) => row.key.remoteJid && Object.keys(row.message).length > 0);

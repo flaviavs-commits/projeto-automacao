@@ -45,9 +45,16 @@ class WebhookIngestionService:
         )
 
         for item in extracted_messages:
+            platform = str(item.get("platform") or "whatsapp")
             platform_user_id = str(item.get("platform_user_id") or "").strip()
             if not platform_user_id:
                 continue
+            alternate_platform_user_ids = [
+                str(value or "").strip()
+                for value in (item.get("alternate_platform_user_ids") or [])
+                if str(value or "").strip()
+            ]
+            preferred_phone_number = str(item.get("preferred_phone_number") or "").strip() or None
 
             external_message_id = str(item.get("external_message_id") or "").strip() or None
             if external_message_id:
@@ -60,22 +67,56 @@ class WebhookIngestionService:
                     duplicate_messages_count += 1
                     continue
 
+            identity_resolution_meta: dict = {}
             contact = CustomerIdentityService().resolve_or_create_contact(
                 db=db,
-                platform=str(item.get("platform") or "whatsapp"),
+                platform=platform,
                 platform_user_id=platform_user_id,
                 profile_name=item.get("profile_name"),
+                alternate_platform_user_ids=alternate_platform_user_ids,
+                preferred_phone_number=preferred_phone_number,
+                resolution_meta=identity_resolution_meta,
             )
+            if identity_resolution_meta.get("identity_enriched"):
+                db.add(
+                    AuditLog(
+                        entity_type="contact",
+                        entity_id=contact.id,
+                        event_type="identity_enriched",
+                        details={
+                            "contact_id": str(contact.id),
+                            "platform": platform,
+                            "platform_user_id": platform_user_id,
+                            "preferred_phone_number": preferred_phone_number,
+                        },
+                    )
+                )
+            for conflict in identity_resolution_meta.get("identity_conflicts") or []:
+                db.add(
+                    AuditLog(
+                        entity_type="contact_identity",
+                        entity_id=contact.id,
+                        event_type="identity_conflict",
+                        details={
+                            "contact_id": str(contact.id),
+                            "platform": platform,
+                            "platform_user_id": platform_user_id,
+                            "conflict": conflict,
+                        },
+                    )
+                )
             conversation = self._get_or_create_open_conversation(
                 db=db,
                 contact_id=contact.id,
-                platform=str(item.get("platform") or "whatsapp"),
+                platform=platform,
             )
             conversation.last_message_at = now_utc
+            conversation.last_inbound_message_text = str(item.get("text_content") or "").strip() or None
+            conversation.last_inbound_message_at = now_utc
 
             message = Message(
                 conversation_id=conversation.id,
-                platform=str(item.get("platform") or "whatsapp"),
+                platform=platform,
                 direction="inbound",
                 message_type=str(item.get("message_type") or "unknown"),
                 external_message_id=external_message_id,
@@ -83,7 +124,11 @@ class WebhookIngestionService:
                 media_url=item.get("media_url"),
                 raw_payload={
                     **to_payload_dict(item.get("raw_payload")),
+                    "_alternate_platform_user_ids": alternate_platform_user_ids,
                     "_phone_number_id": item.get("phone_number_id"),
+                    "_preferred_phone_number": preferred_phone_number,
+                    "_resolved_platform_user_id": platform_user_id,
+                    "_identity_resolution_meta": identity_resolution_meta,
                 },
                 ai_generated=False,
             )

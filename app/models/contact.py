@@ -1,6 +1,6 @@
 from uuid import uuid4
 
-from sqlalchemy import String
+from sqlalchemy import Boolean, String
 from sqlalchemy.orm import Mapped, relationship
 from sqlalchemy.orm import mapped_column
 
@@ -39,6 +39,7 @@ class Contact(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         index=True,
     )
     email: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
+    is_temporary: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, index=True)
 
     conversations = relationship("Conversation", back_populates="contact")
     identities = relationship("ContactIdentity", back_populates="contact")

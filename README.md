@@ -51,6 +51,7 @@ app/
     customer_identity_service.py
     instagram_publish_service.py
     llm_reply_service.py
+    menu_bot_service.py
     memory_service.py
     routing_service.py
     tiktok_service.py
@@ -128,6 +129,9 @@ Copie `.env.example` para `.env` e ajuste os valores locais. As variaveis suport
 - `LLM_QUALITY_MIN_CHARS`
 - `LOCAL_STORAGE_PATH`
 - `LOG_LEVEL`
+- `MESSAGE_RETENTION_MAX_PER_CONVERSATION`
+- `CONVERSATION_AUTO_CLOSE_AFTER_MINUTES`
+- `TEMP_CONTACT_TTL_MINUTES`
 
 ### Modo sem Meta (fallback automatico)
 
@@ -204,6 +208,7 @@ celery -A app.workers.celery_app.celery_app worker --loglevel=info
 - Modelo padrao de configuracao: `qwen2.5:0.5b-instruct` (ajustavel por `LLM_MODEL`).
 - O lock de dominio e aplicado por `LLM_DOMAIN_LOCK=true`, restringindo o atendimento para estudio e agendamento.
 - O contexto efetivo para conversa e retomada e de `3-5` mensagens recentes (controlado por `LLM_CONTEXT_MESSAGES`, default `5`).
+- A retencao de mensagens por conversa e curta e controlada por `MESSAGE_RETENTION_MAX_PER_CONVERSATION` (default `5`); `contact_memories` e identidades de cliente nao sao apagadas por essa rotina.
 - A tolerancia a desvios leves pode ser calibrada por `LLM_OFFTOPIC_TOLERANCE_TURNS` (default `2`), mantendo redirecionamento ao tema do estudio.
 - A base de conhecimento usada no prompt deve ser mantida em `LLM_KNOWLEDGE_PATH` (padrao: `app/prompts/studio_agendamento.md`).
 - O arquivo `app/prompts/studio_agendamento.md` foi estruturado para o atendimento comercial FC VIP, com prompt final, regras, exemplos, anti-desvio, conversao e fallback humano.
@@ -217,6 +222,30 @@ celery -A app.workers.celery_app.celery_app worker --loglevel=info
   - `LLM_KNOWLEDGE_MAX_SECTIONS` (recomendado `2-4`)
   - `LLM_PROMPT_MAX_CONTEXT_CHARS` (recomendado `500-800`)
   - `LLM_MAX_KEY_MEMORIES` (recomendado `8-12`)
+
+## Menu fechado sem LLM (WhatsApp)
+
+- Quando `LLM_ENABLED=false`, o worker usa `app/services/menu_bot_service.py`.
+- O atendimento passa a ser por menu numerico fechado (sem interpretacao de texto livre).
+- Fluxo base:
+  - cliente novo: coleta nome (e telefone se necessario) -> menu principal;
+  - cliente antigo: menu principal direto com saudacao de retorno.
+- Regras globais:
+  - `0` encerra atendimento;
+  - `9` volta ao menu principal;
+  - texto livre fora da coleta de dados retorna: "Para continuar, escolha uma opcao digitando apenas o numero."
+- Agendamento por tipo de cliente:
+  - cliente novo: `https://www.fcvip.com.br/formulario`
+  - cliente antigo: `https://www.fcvip.com.br/agendamentos`
+- Estado do menu e pendencia humana ficam em `conversations`:
+  - `menu_state`
+  - `needs_human`
+  - `human_reason`
+  - `human_requested_at`
+- Endereco oficial usado no fluxo:
+  - Rua Corifeu Marques, 32
+  - Jardim Amalia 1
+  - Volta Redonda - RJ
 
 ## LLM no Railway (servico separado)
 
