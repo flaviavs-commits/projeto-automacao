@@ -12,7 +12,7 @@
   },
   "dependencies": {
     "@hapi/boom": "^10.0.1",
-    "baileys": "latest",
+    "@whiskeysockets/baileys": "7.0.0-rc.9",
     "express": "^5.1.0",
     "pino": "^9.9.4",
     "qrcode": "^1.5.4"
