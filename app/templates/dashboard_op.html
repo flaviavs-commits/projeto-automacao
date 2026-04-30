@@ -188,6 +188,11 @@
       return raw.replace(/\D/g, "");
     }
 
+    function isLocalHost() {
+      const host = String(window.location.hostname || "").toLowerCase();
+      return host === "localhost" || host === "127.0.0.1" || host === "::1";
+    }
+
     function StatusOrb({ label, status, channel }) {
       const isUp = ["conectado", "disponivel"].includes(String(status || "").toLowerCase());
       const color = isUp ? "text-emerald-400" : "text-slate-400";
@@ -314,6 +319,18 @@
 
       const msgBoxRef = useRef(null);
       const lastMessageSignature = useRef("");
+      const localTestMessages = useMemo(() => ([
+        { id: "local-test-1", author: "customer", text: "Oi, queria saber valores e horários disponíveis para hoje.", channel: "whatsapp", created_at: new Date(Date.now() - 24 * 60 * 1000).toISOString() },
+        { id: "local-test-2", author: "agent", text: "Claro. Temos horários às 14h e 16h. Qual prefere?", channel: "whatsapp", created_at: new Date(Date.now() - 20 * 60 * 1000).toISOString() },
+        { id: "local-test-3", author: "customer", text: "Pode ser às 16h, por favor.", channel: "whatsapp", created_at: new Date(Date.now() - 16 * 60 * 1000).toISOString() },
+        { id: "local-test-4", author: "agent", text: "Perfeito. Agendado para 16h. Se precisar de algo, me chama aqui.", channel: "whatsapp", created_at: new Date(Date.now() - 12 * 60 * 1000).toISOString() },
+        { id: "local-test-5", author: "customer", text: "Fechado, obrigado!", channel: "whatsapp", created_at: new Date(Date.now() - 10 * 60 * 1000).toISOString() },
+      ]), []);
+      const visibleMessages = useMemo(() => {
+        if (messages.length) return messages;
+        if (isLocalHost() && selectedConversationId) return localTestMessages;
+        return messages;
+      }, [messages, selectedConversationId, localTestMessages]);
 
       const draftText = selectedConversationId ? getDraft(selectedConversationId) : "";
 
@@ -662,7 +679,7 @@
             <div className="min-h-0 flex-1 overflow-hidden">
               <${AnimatePresence} mode="wait">
                 ${tab === "conversas" && html`
-                  <${motion.section} key="tab_conversas" initial=${{ opacity: 0, y: 8 }} animate=${{ opacity: 1, y: 0 }} exit=${{ opacity: 0, y: -8 }} transition=${{ duration: .18 }} className="grid h-full min-h-0 grid-cols-[420px_minmax(0,1fr)] gap-3">
+                  <${motion.section} key="tab_conversas" initial=${{ opacity: 0, y: 8 }} animate=${{ opacity: 1, y: 0 }} exit=${{ opacity: 0, y: -8 }} transition=${{ duration: .18 }} className="grid h-full min-h-0 grid-cols-1 gap-3 xl:grid-cols-[460px_minmax(0,1fr)]">
                     <aside className="glass-card flex min-h-0 flex-col p-3">
                       <div className="mb-2 text-sm font-semibold">Conversas (${conversations.length})</div>
                       <div className="mb-2 space-y-2">
@@ -705,7 +722,7 @@
                           </label>
                         </div>
                       </div>
-                          <div className="thin-scroll min-h-0 flex-1 space-y-2 overflow-y-auto pr-1 h-[clamp(420px,62vh,780px)]">
+                          <div className="thin-scroll min-h-0 flex-1 space-y-2 overflow-y-auto pr-1">
                         ${conversations.map((item) => html`
                           <${ConversationRow}
                             key=${item.id}
@@ -737,7 +754,7 @@
                               </div>
                             </div>
 
-                            <div className="mb-2 rounded-xl border border-highway-border bg-white p-2">
+                            <div className="thin-scroll mb-2 max-h-32 overflow-y-auto rounded-xl border border-highway-border bg-white p-2">
                               <div className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-slate-500">Informações rápidas</div>
                               <div className="flex flex-wrap gap-1">
                                 ${(selectedConversation?.pillar_memories || []).slice(0, 8).map((m) => html`
@@ -765,8 +782,8 @@
                               </div>
                             `}
 
-                            <div ref=${msgBoxRef} className="thin-scroll min-h-0 flex-1 space-y-2 overflow-y-auto rounded-xl border border-highway-border bg-white p-2 h-[clamp(420px,58vh,760px)]">
-                              ${loadingMessages ? html`<${SkeletonMessages} />` : messages.map((m) => html`<${MessageBubble} key=${m.id} msg=${m} />`)}
+                            <div ref=${msgBoxRef} className="thin-scroll min-h-0 min-h-[380px] flex-1 space-y-2 overflow-y-auto rounded-xl border border-highway-border bg-white p-2 md:min-h-[440px]">
+                              ${loadingMessages ? html`<${SkeletonMessages} />` : visibleMessages.map((m) => html`<${MessageBubble} key=${m.id} msg=${m} />`)}
                             </div>
 
                             <div className="mt-2 rounded-xl border border-highway-border bg-white p-2">
@@ -786,7 +803,7 @@
                                     sendMessage();
                                   }
                                 }}
-                                className="h-16 w-full resize-none rounded-lg border border-highway-border px-3 py-2 text-sm outline-none focus:border-highway-electric"
+                                className="h-14 w-full resize-none rounded-lg border border-highway-border px-3 py-2 text-sm outline-none focus:border-highway-electric"
                                 placeholder="Digite aqui. Enter envia, Shift+Enter quebra linha."
                               ></textarea>
                               <div className="mt-2 flex items-center justify-between gap-2">
