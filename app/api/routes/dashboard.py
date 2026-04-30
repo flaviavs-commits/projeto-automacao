@@ -382,6 +382,9 @@ def dashboard_op_state_compat(
     }
 
 
+dashboard_op_state = dashboard_op_state_compat
+
+
 @router.post("/dashboard/op/send")
 def dashboard_op_send_compat(
     payload: DashboardSendPayload,

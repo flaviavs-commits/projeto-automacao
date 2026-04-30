@@ -1,0 +1,65 @@
+﻿id,nome,email,plano,is_member,is_member_active,account_tier,cidade,instagram,member_since,member_until,site_cadastro,date_joined
+
+32,Mateus Muniz,mateus@vitissouls.com,nao_membro,False,False,0,,,,,fcvip,2026-04-28T10:49:00.164751-03:00
+
+31,leonardo teste,leozinazario@gmail.com,nao_membro,False,False,0,,,,,descontos_vip,2026-04-27T10:51:41.136789-03:00
+
+30,Roda Cultural SA,rodaculturaldosantoamaro@gmail.com,nao_membro,False,False,0,,,,,fcvip,2026-04-20T15:58:04.690736-03:00
+
+29,Julio Cesar Amorim,7vidasoficial@gmail.com,membro,True,True,0,,,2026-04-28T12:11:46.905452-03:00,,fcvip,2026-04-20T15:58:04.660722-03:00
+
+28,Pauliana Caetano Cavalcante,pauliana@vitissouls.com,nao_membro,False,False,0,,,,,fcvip,2026-04-20T15:58:04.642325-03:00
+
+27,Felipe Mateus Moura,felipemateusmouradesouza@gmail.com,nao_membro,False,False,0,,,,,fcvip,2026-04-20T15:58:04.622233-03:00
+
+26,Keitiane da Silva Cruz Muniz,keitianemuniz@gmail.com,membro,True,True,0,,,2026-04-28T12:11:46.806092-03:00,,fcvip,2026-04-20T15:58:04.603413-03:00
+
+25,Wendell Mendes Souza,contato.wlbxd@gmail.com,nao_membro,False,False,0,,,,,fcvip,2026-04-20T15:58:04.581305-03:00
+
+24,Daniel Pedrosa Borges,danborges0911@gmail.com,nao_membro,False,False,0,,,,,fcvip,2026-04-20T15:58:04.565329-03:00
+
+23,Jo�o Felipe Fernandes da costa,joaofelipefernandes00@gmail.com,nao_membro,False,False,0,,,,,fcvip,2026-04-20T15:58:04.542316-03:00
+
+22,wafwa,dwdwqwdqwdqwdq@gmail.com,nao_membro,False,False,0,wdqqdw,,,,fcvip,2026-04-15T15:51:01.460114-03:00
+
+21,teste,teste@vitissouls.com,nao_membro,False,False,0,,,,,fcvip,2026-04-14T09:14:34.164867-03:00
+
+20,Felipe Alcantara Martins,felipemartins072004@gmail.com,nao_membro,False,False,0,,,,,fcvip,2026-04-14T08:32:01.814648-03:00
+
+19,FC VIP,fcvip@vitissouls.com,nao_membro,False,False,0,,,,,fcvip,2026-04-13T16:47:41.864272-03:00
+
+18,Felipe Alcantara Martins,felixobackup2@gmail.com,nao_membro,False,False,0,,,,,fcvip,2026-04-13T13:29:29.086305-03:00
+
+17,Felix Teste,felixobackup2+postmergecheck@gmail.com,nao_membro,False,False,0,,,,,fcvip,2026-04-13T13:21:48.814807-03:00
+
+16,Felix Teste,felixobackup2+legacycheck7@gmail.com,nao_membro,False,False,0,,,,,fcvip,2026-04-13T13:07:35.397341-03:00
+
+15,Felix Teste,felixobackup2+legacycheck6@gmail.com,nao_membro,False,False,0,,,,,fcvip,2026-04-13T13:07:35.276560-03:00
+
+14,Felix Backup,felixobackup2+m@gmail.com,nao_membro,False,False,0,,,,,fcvip,2026-04-13T11:45:46.201682-03:00
+
+13,Brunna,tamujunto@vitissouls.com,nao_membro,False,False,0,,,,,fcvip,2026-04-10T16:17:26.055036-03:00
+
+12,Flavia Cavalcante,flaviavs@vitissouls.com,admin,False,False,0,,,,,fcvip,2026-04-10T13:36:17.068092-03:00
+
+11,tiago,muniztb@gmail.com,membro,True,True,0,Volta Redonda,muniztb,2026-04-10T09:58:56.929461-03:00,,fcvip,2026-04-10T09:00:08.596001-03:00
+
+10,Felipe Martins,felixobackup@gmail.com,nao_membro,False,False,0,Volta Redonda,,,,fcvip,2026-04-10T08:41:05.541370-03:00
+
+9,Felipe Martin,felipethefeh@gmail.com,nao_membro,False,False,0,,,2026-04-10T15:11:55.492310-03:00,,fcvip,2026-04-09T15:46:23.954827-03:00
+
+8,Tiago B Muniz,muniztbfreelancer@gmail.com,nao_membro,False,False,0,,,,,fcvip,2026-04-09T15:43:57.605434-03:00
+
+7,Andr� Gustavo,andre@vitissouls.com,membro,True,True,0,,,2026-04-07T17:37:15.002308-03:00,,fcvip,2026-04-07T17:36:36.600609-03:00
+
+6,Andr� Gustavo,dede.gustavo100@gmail.com,nao_membro,False,False,0,,,,,fcvip,2026-04-07T15:40:55.431374-03:00
+
+5,Tiago Muniz,tiago@vitissouls.com,admin,True,True,0,,,2026-04-13T09:01:01.495590-03:00,,fcvip,2026-04-03T19:20:42.631893-03:00
+
+3,Gabriel Fernandes,gabrielfgnascimento@icloud.com,admin,False,False,0,,,,,fcvip,2026-04-03T17:12:21.890387-03:00
+
+2,Felipe Martins,felipe@vitissouls.com,admin,False,False,0,,,,,fcvip,2026-04-03T14:23:34.769392-03:00
+
+1,,admin@vitissouls.com,admin,False,False,0,,,,,fcvip,2026-04-02T22:20:06.595827-03:00
+
+

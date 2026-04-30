@@ -160,7 +160,7 @@
       let data = null;
       try { data = await res.json(); } catch (_) { data = null; }
       if (!res.ok) {
-        throw new Error((data && data.detail) || "Não foi possível concluir agora.");
+        throw new Error((data && data.detail) || "NÃ£o foi possÃ­vel concluir agora.");
       }
       return data;
     }
@@ -198,10 +198,10 @@
       const color = isUp ? "text-emerald-400" : "text-slate-400";
       const ui = CHANNEL_UI[channel] || { glyph: "?" };
       return html`
-        <div className="inline-flex items-center gap-2 rounded-full border border-highway-border bg-white/90 px-3 py-1.5 text-xs font-medium text-slate-600">
-          <span className=${`pulse-dot relative inline-flex h-2.5 w-2.5 rounded-full ${isUp ? "bg-emerald-400" : "bg-slate-300"} ${color}`}></span>
-          <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-slate-100 font-mono text-[10px]">${ui.glyph}</span>
-          <span>${label}: ${status || "indisponível"}</span>
+        <div className="inline-flex items-center gap-1.5 rounded-full border border-highway-border bg-white/90 px-2 py-1 text-[11px] font-semibold text-slate-600">
+          <span className=${`pulse-dot relative inline-flex h-2 w-2 rounded-full ${isUp ? "bg-emerald-400" : "bg-slate-300"} ${color}`}></span>
+          <span className="inline-flex h-4 w-4 items-center justify-center rounded-full bg-slate-100 font-mono text-[9px]">${ui.glyph}</span>
+          <span>${isUp ? "ON" : "OFF"}</span>
         </div>
       `;
     }
@@ -211,13 +211,13 @@
         <button
           disabled=${disabled}
           onClick=${onClick}
-          className=${`relative inline-flex h-8 w-16 items-center rounded-full border transition ${
+          className=${`relative inline-flex h-6 w-11 items-center rounded-full border transition ${
             checked
               ? "border-emerald-300 bg-emerald-100 shadow-glowGreen"
               : "border-slate-300 bg-slate-200"
           } ${disabled ? "opacity-60 cursor-not-allowed" : "cursor-pointer"}`}
         >
-          <span className=${`absolute left-1 top-1 h-6 w-6 rounded-full bg-white shadow transition-transform ${checked ? "translate-x-8" : ""}`}></span>
+          <span className=${`absolute left-0.5 top-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform ${checked ? "translate-x-5" : ""}`}></span>
           <span className="sr-only">Alternar chatbot</span>
         </button>
       `;
@@ -239,25 +239,25 @@
       return html`
         <button
           onClick=${onClick}
-          className=${`w-full rounded-xl border p-3 text-left transition ${
+          className=${`w-full rounded-xl border p-2 text-left transition ${
             selected
               ? "border-highway-electric bg-blue-50/70 shadow-glowBlue"
               : "border-highway-border bg-white hover:bg-slate-50"
           }`}
         >
           <div className="flex items-center justify-between gap-2">
-            <div className="truncate text-sm font-semibold">${safe(item.contact?.name || "Sem nome")}</div>
-            <span className=${`rounded-full px-2 py-0.5 text-[10px] font-semibold ${isHot ? "bg-amber-100 text-amber-700" : "bg-slate-100 text-slate-600"}`}>
+            <div className="truncate text-[13px] font-semibold">${safe(item.contact?.name || "Sem nome")}</div>
+            <span className=${`shrink-0 rounded-full px-1.5 py-0.5 text-[9px] font-semibold ${isHot ? "bg-amber-100 text-amber-700" : "bg-slate-100 text-slate-600"}`}>
               ${isHot ? "Perfil quente" : "Perfil normal"}
             </span>
           </div>
-          <div className="mt-1 flex items-center gap-1 text-xs text-slate-500 font-mono">
-            <span>${safe(item.contact?.phone || "-")}</span>
-            <span>•</span>
-            <span>${channel.label}</span>
+          <div className="mt-1 flex items-center gap-1 truncate text-[11px] text-slate-500 font-mono">
+            <span className="truncate">${safe(item.contact?.phone || "-")}</span>
+            <span>â€¢</span>
+            <span className="truncate">${channel.label}</span>
           </div>
-          <div className="mt-1 text-[11px] text-slate-500">
-            ${fmtDateTime(item.last_activity_at)} • ${safe(item.status || "-")}
+          <div className="mt-0.5 text-[10px] text-slate-500">
+            ${fmtDateTime(item.last_activity_at)} â€¢ ${safe(item.status || "-")}
           </div>
         </button>
       `;
@@ -266,7 +266,7 @@
     function MessageBubble({ msg }) {
       const ui = CHANNEL_UI[msg.channel] || CHANNEL_UI.whatsapp;
       const sent = msg.type === "enviada";
-      const source = sent ? (msg.manual ? "Equipe" : (msg.automatic ? "Automação" : "Saída")) : "Cliente";
+      const source = sent ? (msg.manual ? "Equipe" : (msg.automatic ? "AutomaÃ§Ã£o" : "SaÃ­da")) : "Cliente";
       const leftBorder = msg.channel === "instagram"
         ? "border-l-4 border-violet-400"
         : `border-l-4 ${ui.bubble}`;
@@ -299,6 +299,7 @@
       });
       const [selectedConversationId, setSelectedConversationId] = useState(null);
       const [selectedConversation, setSelectedConversation] = useState(null);
+      const [sidebarCollapsed, setSidebarCollapsed] = useState(true);
       const [messages, setMessages] = useState([]);
       const [loadingMessages, setLoadingMessages] = useState(false);
       const [sending, setSending] = useState(false);
@@ -309,6 +310,7 @@
       const [contactModal, setContactModal] = useState({ open: false, data: null, id: null });
       const [agenda, setAgenda] = useState({ slots: [], next: [] });
       const [urgentModal, setUrgentModal] = useState({ open: false, item: null, snoozedUntil: 0 });
+      const [panelError, setPanelError] = useState("");
       const [errorText, setErrorText] = useState("");
 
       const humanQueue = useOpStore((s) => s.humanQueue);
@@ -319,31 +321,118 @@
 
       const msgBoxRef = useRef(null);
       const lastMessageSignature = useRef("");
-      const localTestMessages = useMemo(() => ([
-        { id: "local-test-1", author: "customer", text: "Oi, queria saber valores e horários disponíveis para hoje.", channel: "whatsapp", created_at: new Date(Date.now() - 24 * 60 * 1000).toISOString() },
-        { id: "local-test-2", author: "agent", text: "Claro. Temos horários às 14h e 16h. Qual prefere?", channel: "whatsapp", created_at: new Date(Date.now() - 20 * 60 * 1000).toISOString() },
-        { id: "local-test-3", author: "customer", text: "Pode ser às 16h, por favor.", channel: "whatsapp", created_at: new Date(Date.now() - 16 * 60 * 1000).toISOString() },
-        { id: "local-test-4", author: "agent", text: "Perfeito. Agendado para 16h. Se precisar de algo, me chama aqui.", channel: "whatsapp", created_at: new Date(Date.now() - 12 * 60 * 1000).toISOString() },
-        { id: "local-test-5", author: "customer", text: "Fechado, obrigado!", channel: "whatsapp", created_at: new Date(Date.now() - 10 * 60 * 1000).toISOString() },
-      ]), []);
-      const visibleMessages = useMemo(() => {
-        if (messages.length) return messages;
-        if (isLocalHost() && selectedConversationId) return localTestMessages;
-        return messages;
-      }, [messages, selectedConversationId, localTestMessages]);
+      const demoConversations = useMemo(() => {
+        const now = Date.now();
+        return [
+          {
+            id: "demo-1",
+            channel: "whatsapp",
+            status: "open",
+            is_hot: true,
+            last_activity_at: new Date(now - 4 * 60 * 1000).toISOString(),
+            human_status: "bot",
+            contact: { name: "Cliente Exemplo", phone: "5521999991111" },
+          },
+          {
+            id: "demo-2",
+            channel: "instagram",
+            status: "open",
+            is_hot: false,
+            last_activity_at: new Date(now - 15 * 60 * 1000).toISOString(),
+            human_status: "human_pending",
+            contact: { name: "Loja Parceira", phone: "@lojaparceira" },
+          },
+          {
+            id: "demo-3",
+            channel: "facebook",
+            status: "closed",
+            is_hot: false,
+            last_activity_at: new Date(now - 26 * 60 * 60 * 1000).toISOString(),
+            human_status: "bot",
+            contact: { name: "Lead Antigo", phone: "FB-2190" },
+          },
+        ];
+      }, []);
+      const demoMessagesByConversation = useMemo(() => {
+        const now = Date.now();
+        return {
+          "demo-1": [
+            { id: "demo-1-1", type: "recebida", text: "Oi, queria saber os valores para hoje.", channel: "whatsapp", created_at: new Date(now - 16 * 60 * 1000).toISOString() },
+            { id: "demo-1-2", type: "enviada", manual: false, automatic: true, text: "Claro. Temos opcoes de 14h e 16h. Digite 1 ou 2.", channel: "whatsapp", created_at: new Date(now - 14 * 60 * 1000).toISOString() },
+            { id: "demo-1-3", type: "recebida", text: "2", channel: "whatsapp", created_at: new Date(now - 12 * 60 * 1000).toISOString() },
+            { id: "demo-1-4", type: "enviada", manual: true, automatic: false, text: "Perfeito, reservado para 16h. Posso te ajudar com mais algo?", channel: "whatsapp", created_at: new Date(now - 9 * 60 * 1000).toISOString() },
+          ],
+          "demo-2": [
+            { id: "demo-2-1", type: "recebida", text: "Preciso falar com humano sobre parceria.", channel: "instagram", created_at: new Date(now - 25 * 60 * 1000).toISOString() },
+            { id: "demo-2-2", type: "enviada", manual: false, automatic: true, text: "Encaminhando para atendimento humano.", channel: "instagram", created_at: new Date(now - 23 * 60 * 1000).toISOString() },
+          ],
+          "demo-3": [
+            { id: "demo-3-1", type: "recebida", text: "Obrigado pelo atendimento.", channel: "facebook", created_at: new Date(now - 27 * 60 * 60 * 1000).toISOString() },
+            { id: "demo-3-2", type: "enviada", manual: true, automatic: false, text: "Nos que agradecemos. Qualquer coisa, estamos a disposicao.", channel: "facebook", created_at: new Date(now - 26 * 60 * 60 * 1000).toISOString() },
+          ],
+        };
+      }, []);
+      const demoDetailsById = useMemo(() => ({
+        "demo-1": {
+          id: "demo-1",
+          channel: "whatsapp",
+          chatbot_enabled: true,
+          human_status: "bot",
+          contact: { name: "Cliente Exemplo", phone: "5521999991111" },
+          identities: [],
+          pillar_memories: [
+            { key: "profile", label: "Perfil", value: "Cliente quente" },
+            { key: "interest", label: "Interesse", value: "Agendamento" },
+            { key: "last_topic", label: "Tema", value: "Valores" },
+          ],
+        },
+        "demo-2": {
+          id: "demo-2",
+          channel: "instagram",
+          chatbot_enabled: false,
+          human_status: "human_pending",
+          contact: { name: "Loja Parceira", phone: "@lojaparceira" },
+          identities: [],
+          pillar_memories: [
+            { key: "profile", label: "Perfil", value: "Parceiro potencial" },
+            { key: "priority", label: "Prioridade", value: "Alta" },
+          ],
+        },
+        "demo-3": {
+          id: "demo-3",
+          channel: "facebook",
+          chatbot_enabled: false,
+          human_status: "bot",
+          contact: { name: "Lead Antigo", phone: "FB-2190" },
+          identities: [],
+          pillar_memories: [],
+        },
+      }), []);
+      const isDemoConversationId = (id) => String(id || "").startsWith("demo-");
+      const shouldUseLocalDemo = isLocalHost() && !conversations.length;
+      const displayedConversations = shouldUseLocalDemo ? demoConversations : conversations;
+      const effectiveStatus = shouldUseLocalDemo
+        ? { whatsapp: "conectado", instagram: "disponivel", facebook: "indisponivel", tiktok: "disponivel" }
+        : status;
+      const visibleMessages = messages;
 
       const draftText = selectedConversationId ? getDraft(selectedConversationId) : "";
 
       const metrics = useMemo(() => {
-        const openConvs = conversations.filter((c) => c.status === "open").length;
+        const openConvs = displayedConversations.filter((c) => c.status === "open").length;
         const pendingHuman = humanQueue.filter((h) => h.human_status === "human_pending").length;
-        const hotCount = conversations.filter((c) => c.is_hot).length;
+        const hotCount = displayedConversations.filter((c) => c.is_hot).length;
         return { openConvs, pendingHuman, hotCount };
-      }, [conversations, humanQueue]);
+      }, [displayedConversations, humanQueue]);
 
       async function loadStatus() {
         const data = await api("/dashboard/op/status");
         setStatus(data.channels || {});
+      }
+
+      async function reloadAllData() {
+        await Promise.all([loadStatus(), loadConversations(false), loadHumanQueue(), loadContacts(), loadAgenda(), loadUrgent()]);
+        setPanelError("");
       }
 
       async function loadConversations(keepSelection = true) {
@@ -396,6 +485,15 @@
 
       async function loadConversationDetail(conversationId) {
         if (!conversationId) return;
+        if (isDemoConversationId(conversationId)) {
+          const detail = demoDetailsById[conversationId];
+          if (!detail) return;
+          setSelectedConversation(detail);
+          const opts = [{ channel: detail.channel, identityId: "", label: CHANNEL_UI[detail.channel]?.label || detail.channel }];
+          setChannelOptions(opts);
+          setSelectedChannel(`${opts[0].channel}|`);
+          return;
+        }
         const detail = await api(`/dashboard/op/conversations/${conversationId}`);
         setSelectedConversation(detail);
         const opts = buildChannelOptions(detail);
@@ -405,6 +503,15 @@
 
       async function loadMessages(force = false) {
         if (!selectedConversationId) return;
+        if (isDemoConversationId(selectedConversationId)) {
+          setLoadingMessages(false);
+          setMessages(demoMessagesByConversation[selectedConversationId] || []);
+          requestAnimationFrame(() => {
+            const el = msgBoxRef.current;
+            if (el) el.scrollTop = el.scrollHeight;
+          });
+          return;
+        }
         setLoadingMessages(true);
         try {
           let offset = 0;
@@ -485,6 +592,10 @@
 
       async function toggleChatbot() {
         if (!selectedConversationId || !selectedConversation) return;
+        if (isDemoConversationId(selectedConversationId)) {
+          setSelectedConversation((s) => ({ ...(s || {}), chatbot_enabled: !(s?.chatbot_enabled === true) }));
+          return;
+        }
         const enabled = !(selectedConversation.chatbot_enabled === true);
         const data = await api(`/dashboard/op/conversations/${selectedConversationId}/chatbot/toggle`, {
           method: "POST",
@@ -504,11 +615,29 @@
         }
         const [channel, identityId] = safe(selectedChannel).split("|");
         if (!channel) {
-          setErrorText("Este canal ainda não está disponível para envio.");
+          setErrorText("Este canal ainda nÃ£o estÃ¡ disponÃ­vel para envio.");
           return;
         }
         const payload = { channel, text };
         if (identityId) payload.contact_identity_id = identityId;
+        if (isDemoConversationId(selectedConversationId)) {
+          const msg = {
+            id: `demo-local-${Date.now()}`,
+            type: "enviada",
+            manual: true,
+            automatic: false,
+            text,
+            channel,
+            created_at: new Date().toISOString(),
+          };
+          setMessages((prev) => [...prev, msg]);
+          clearDraft(selectedConversationId);
+          requestAnimationFrame(() => {
+            const el = msgBoxRef.current;
+            if (el) el.scrollTop = el.scrollHeight;
+          });
+          return;
+        }
         setSending(true);
         try {
           await api(`/dashboard/op/conversations/${selectedConversationId}/send`, {
@@ -521,13 +650,24 @@
           await loadConversations(true);
           await loadMessages(true);
         } catch (err) {
-          setErrorText(err.message || "Não foi possível enviar por este canal agora.");
+          const msg = String(err?.message || "");
+          if (/failed to fetch/i.test(msg)) {
+            setErrorText("NÃ£o foi possÃ­vel enviar agora.");
+          } else {
+            setErrorText(msg || "NÃ£o foi possÃ­vel enviar por este canal agora.");
+          }
         } finally {
           setSending(false);
         }
       }
 
       async function humanAction(conversationId, action) {
+        if (isDemoConversationId(conversationId)) {
+          if (selectedConversationId === conversationId) {
+            setSelectedConversation((s) => ({ ...(s || {}), human_status: action === "accept" ? "human" : "bot" }));
+          }
+          return;
+        }
         await api(`/dashboard/op/conversations/${conversationId}/human/${action}`, { method: "POST" });
         if (selectedConversationId === conversationId) {
           await loadConversationDetail(conversationId);
@@ -564,7 +704,7 @@
             <table className="w-full min-w-[760px] border-collapse text-xs">
               <thead>
                 <tr>
-                  <th className="border border-highway-border bg-slate-50 px-2 py-2 text-left">Horário</th>
+                  <th className="border border-highway-border bg-slate-50 px-2 py-2 text-left">HorÃ¡rio</th>
                   ${days.map((d) => html`<th key=${d.key} className="border border-highway-border bg-slate-50 px-2 py-2 text-center">${d.label}</th>`)}
                 </tr>
               </thead>
@@ -586,16 +726,22 @@
       }
 
       useEffect(() => {
-        (async () => {
-          await Promise.all([loadStatus(), loadConversations(false), loadHumanQueue(), loadContacts(), loadAgenda(), loadUrgent()]);
-        })().catch((err) => setErrorText(err.message || "Falha ao carregar o painel."));
+        reloadAllData().catch((err) => setPanelError(err.message || "Falha ao carregar o painel."));
       }, []);
 
       useEffect(() => {
         if (!selectedConversationId) return;
-        loadConversationDetail(selectedConversationId).catch((err) => setErrorText(err.message || "Falha ao abrir conversa."));
-        loadMessages(true).catch((err) => setErrorText(err.message || "Falha ao carregar mensagens."));
+        loadConversationDetail(selectedConversationId).catch((err) => setPanelError(err.message || "Falha ao abrir conversa."));
+        loadMessages(true).catch((err) => setPanelError(err.message || "Falha ao carregar mensagens."));
       }, [selectedConversationId]);
+
+      useEffect(() => {
+        if (!shouldUseLocalDemo) return;
+        const selectedExists = displayedConversations.some((c) => c.id === selectedConversationId);
+        if (!selectedExists && displayedConversations.length) {
+          setSelectedConversationId(displayedConversations[0].id);
+        }
+      }, [shouldUseLocalDemo, displayedConversations, selectedConversationId]);
 
       useEffect(() => {
         const t = setTimeout(() => {
@@ -627,7 +773,7 @@
 
       const emptyState = html`
         <div className="glass-card flex h-full min-h-[420px] flex-col items-center justify-center border-dashed p-8 text-center">
-          <div className="mb-3 text-4xl">🛰️</div>
+          <div className="mb-3 text-4xl">ðŸ›°ï¸</div>
           <h3 className="text-lg font-semibold text-slate-700">Cockpit operacional pronto</h3>
           <p className="mt-1 max-w-md text-sm text-slate-500">
             Selecione uma conversa para iniciar. O painel atualiza sozinho em tempo real.
@@ -650,28 +796,20 @@
       `;
 
       return html`
-        <div className="h-screen overflow-hidden bg-highway-bg p-3">
-          <div className="glass-card flex h-full flex-col overflow-hidden p-3">
-            <header className="mb-3 flex flex-wrap items-center justify-between gap-2">
-              <h1 className="text-lg font-semibold tracking-tight">Central OP de Mensagens <span className="text-xs font-medium text-highway-electric">Highway Edition</span></h1>
-              <div className="flex flex-wrap items-center gap-2">
-                <${StatusOrb} channel="whatsapp" label="WhatsApp" status=${status.whatsapp} />
-                <${StatusOrb} channel="instagram" label="Instagram" status=${status.instagram} />
-                <${StatusOrb} channel="facebook" label="Facebook" status=${status.facebook} />
-                <${StatusOrb} channel="tiktok" label="TikTok" status=${status.tiktok} />
-              </div>
-            </header>
-
-            <nav className="mb-3 inline-flex w-fit rounded-xl border border-highway-border bg-white p-1">
+        <div className="h-screen overflow-hidden bg-highway-bg">
+          <div className="flex h-full flex-col overflow-hidden p-1.5">
+            <nav className=${`mb-1.5 grid rounded-lg border border-highway-border bg-white p-1 ${
+              sidebarCollapsed ? "w-[250px]" : "w-[330px]"
+            } grid-cols-4 gap-1`}>
               ${["conversas", "clientes", "agenda", "humano"].map((name) => html`
                 <button
                   key=${name}
                   onClick=${() => setTab(name)}
-                  className=${`rounded-lg px-4 py-2 text-sm font-medium transition ${
+                  className=${`rounded-md px-2 py-1.5 text-[11px] font-semibold transition ${
                     tab === name ? "bg-highway-electric text-white shadow-glowBlue" : "text-slate-600 hover:bg-slate-100"
                   }`}
                 >
-                  ${name === "conversas" ? "Conversas" : name === "clientes" ? "Banco de Dados" : name === "agenda" ? "Agenda" : "Atendimento humano"}
+                  ${name === "conversas" ? "Conv" : name === "clientes" ? "BD" : name === "agenda" ? "Agenda" : "Hum"}
                 </button>
               `)}
             </nav>
@@ -679,21 +817,39 @@
             <div className="min-h-0 flex-1 overflow-hidden">
               <${AnimatePresence} mode="wait">
                 ${tab === "conversas" && html`
-                  <${motion.section} key="tab_conversas" initial=${{ opacity: 0, y: 8 }} animate=${{ opacity: 1, y: 0 }} exit=${{ opacity: 0, y: -8 }} transition=${{ duration: .18 }} className="grid h-full min-h-0 grid-cols-1 gap-3 xl:grid-cols-[460px_minmax(0,1fr)]">
-                    <aside className="glass-card flex min-h-0 flex-col p-3">
-                      <div className="mb-2 text-sm font-semibold">Conversas (${conversations.length})</div>
-                      <div className="mb-2 space-y-2">
+                  <${motion.section}
+                    key="tab_conversas"
+                    initial=${{ opacity: 0, y: 8 }}
+                    animate=${{ opacity: 1, y: 0 }}
+                    exit=${{ opacity: 0, y: -8 }}
+                    transition=${{ duration: .18 }}
+                    className=${`relative grid h-full min-h-0 grid-cols-1 gap-1.5 ${
+                      sidebarCollapsed
+                        ? "xl:grid-cols-[250px_minmax(0,1fr)] 2xl:grid-cols-[260px_minmax(0,1fr)]"
+                        : "xl:grid-cols-[330px_minmax(0,1fr)] 2xl:grid-cols-[350px_minmax(0,1fr)]"
+                    }`}
+                  >
+                    <aside className="relative glass-card flex min-h-0 flex-col p-2">
+                      <div className="mb-1.5 text-sm font-semibold">Conversas (${displayedConversations.length})</div>
+                      <button
+                        onClick=${() => setSidebarCollapsed((v) => !v)}
+                        className="hidden xl:flex absolute -right-3 top-1/2 z-20 h-6 w-6 -translate-y-1/2 items-center justify-center rounded-full border border-highway-border bg-white text-xs font-bold text-slate-600 shadow-sm"
+                        title="Alternar largura"
+                      >
+                        ${sidebarCollapsed ? ">" : "<"}
+                      </button>
+                      <div className="mb-2 space-y-1.5">
                         <input
                           value=${conversationFilters.search}
                           onInput=${(e) => setConversationFilters((s) => ({ ...s, search: e.target.value }))}
-                          className="w-full rounded-lg border border-highway-border bg-white px-3 py-2 text-sm outline-none focus:border-highway-electric"
+                          className="w-full rounded-lg border border-highway-border bg-white px-2.5 py-2 text-sm outline-none focus:border-highway-electric"
                           placeholder="Buscar por nome, telefone ou ID"
                         />
-                        <div className="grid grid-cols-2 gap-2">
+                        <div className=${`grid gap-1.5 ${sidebarCollapsed ? "grid-cols-1" : "grid-cols-2 gap-2"}`}>
                           <select
                             value=${conversationFilters.channel}
                             onChange=${(e) => setConversationFilters((s) => ({ ...s, channel: e.target.value }))}
-                            className="rounded-lg border border-highway-border bg-white px-2 py-2 text-xs"
+                            className="rounded-lg border border-highway-border bg-white px-2 py-1.5 text-xs"
                           >
                             <option value="">Todos canais</option>
                             <option value="whatsapp">WhatsApp</option>
@@ -704,14 +860,14 @@
                           <select
                             value=${conversationFilters.status}
                             onChange=${(e) => setConversationFilters((s) => ({ ...s, status: e.target.value }))}
-                            className="rounded-lg border border-highway-border bg-white px-2 py-2 text-xs"
+                            className="rounded-lg border border-highway-border bg-white px-2 py-1.5 text-xs"
                           >
                             <option value="">Abertas e fechadas</option>
                             <option value="open">Abertas</option>
                             <option value="closed">Fechadas</option>
                           </select>
                         </div>
-                        <div className="flex items-center gap-3 text-xs text-slate-500">
+                        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500">
                           <label className="inline-flex items-center gap-1">
                             <input type="checkbox" checked=${conversationFilters.hotOnly} onChange=${(e) => setConversationFilters((s) => ({ ...s, hotOnly: !!e.target.checked }))}/>
                             Perfil quente
@@ -722,8 +878,8 @@
                           </label>
                         </div>
                       </div>
-                          <div className="thin-scroll min-h-0 flex-1 space-y-2 overflow-y-auto pr-1">
-                        ${conversations.map((item) => html`
+                          <div className="thin-scroll min-h-0 flex-1 space-y-1.5 overflow-y-auto pr-1">
+                        ${displayedConversations.map((item) => html`
                           <${ConversationRow}
                             key=${item.id}
                             item=${item}
@@ -738,14 +894,14 @@
                       ${!selectedConversationId
                         ? emptyState
                         : html`
-                          <div className="glass-card flex h-full min-h-0 flex-col p-3">
-                            <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                          <div className="glass-card flex h-full min-h-0 flex-col p-2.5">
+                            <div className="mb-1.5 flex flex-wrap items-center justify-between gap-2">
                               <div>
                                 <div className="text-sm font-semibold">${safe(selectedConversation?.contact?.name || "Sem nome")}</div>
-                                <div className="font-mono text-xs text-slate-500">${safe(selectedConversation?.contact?.phone || "-")} • ${CHANNEL_UI[selectedConversation?.channel]?.label || "-"}</div>
+                                <div className="font-mono text-xs text-slate-500">${safe(selectedConversation?.contact?.phone || "-")} â€¢ ${CHANNEL_UI[selectedConversation?.channel]?.label || "-"}</div>
                               </div>
                               <div className="flex items-center gap-2">
-                                <span className="text-xs text-slate-500">Chatbot</span>
+                                <span className="text-[11px] text-slate-500">Bot</span>
                                 <${ToggleSwitch}
                                   checked=${!!selectedConversation?.chatbot_enabled}
                                   disabled=${false}
@@ -754,45 +910,35 @@
                               </div>
                             </div>
 
-                            <div className="thin-scroll mb-2 max-h-32 overflow-y-auto rounded-xl border border-highway-border bg-white p-2">
+                            <div className="thin-scroll mb-1.5 overflow-x-auto overflow-y-hidden rounded-xl border border-highway-border bg-white p-2">
                               <div className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-slate-500">Informações rápidas</div>
-                              <div className="flex flex-wrap gap-1">
-                                ${(selectedConversation?.pillar_memories || []).slice(0, 8).map((m) => html`
-                                  <span key=${m.key + m.value} className="rounded-full border border-highway-border bg-slate-50 px-2 py-0.5 text-[11px] text-slate-600">${safe(m.label || m.key)}: ${safe(m.value)}</span>
+                              <div className="flex w-max flex-nowrap gap-1 pr-1">
+                                ${(selectedConversation?.pillar_memories || []).map((m) => html`
+                                  <span key=${m.key + m.value} className="inline-flex shrink-0 rounded-full border border-highway-border bg-slate-50 px-2 py-0.5 text-[11px] text-slate-600">${safe(m.label || m.key)}: ${safe(m.value)}</span>
                                 `)}
-                                ${!(selectedConversation?.pillar_memories || []).length && html`<span className="text-xs text-slate-400">Sem memórias essenciais no momento.</span>`}
+                                ${!(selectedConversation?.pillar_memories || []).length && html`<span className="inline-flex shrink-0 text-xs text-slate-400">Sem memórias essenciais no momento.</span>`}
                               </div>
-                              ${(selectedConversation?.pillar_memories || []).length > 8 && html`
-                                <details className="mt-2 text-xs text-slate-500">
-                                  <summary className="cursor-pointer">Ver mais detalhes</summary>
-                                  <div className="mt-2 grid grid-cols-2 gap-1">
-                                    ${(selectedConversation?.pillar_memories || []).slice(8).map((m) => html`
-                                      <div key=${"more_" + m.key + m.value} className="rounded border border-highway-border bg-white px-2 py-1">${safe(m.label || m.key)}: ${safe(m.value)}</div>
-                                    `)}
-                                  </div>
-                                </details>
-                              `}
                             </div>
 
                             ${selectedConversation?.human_status === "human_pending" && html`
                               <div className="mb-2 flex items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-2 py-2 text-xs">
                                 <span className="font-semibold text-amber-700">Atendimento humano solicitado</span>
-                                <button onClick=${() => humanAction(selectedConversationId, "accept")} className="inline-flex items-center gap-1 rounded-lg border border-emerald-200 bg-gradient-to-r from-emerald-400 to-emerald-500 px-2 py-1 font-medium text-white">✓ Aceitar</button>
-                                <button onClick=${() => humanAction(selectedConversationId, "ignore")} className="inline-flex items-center gap-1 rounded-lg border border-rose-200 bg-gradient-to-r from-rose-400 to-rose-500 px-2 py-1 font-medium text-white">✕ Ignorar</button>
+                                <button onClick=${() => humanAction(selectedConversationId, "accept")} className="inline-flex items-center gap-1 rounded-lg border border-emerald-200 bg-gradient-to-r from-emerald-400 to-emerald-500 px-2 py-1 font-medium text-white">âœ“ Aceitar</button>
+                                <button onClick=${() => humanAction(selectedConversationId, "ignore")} className="inline-flex items-center gap-1 rounded-lg border border-rose-200 bg-gradient-to-r from-rose-400 to-rose-500 px-2 py-1 font-medium text-white">âœ• Ignorar</button>
                               </div>
                             `}
 
-                            <div ref=${msgBoxRef} className="thin-scroll min-h-0 min-h-[380px] flex-1 space-y-2 overflow-y-auto rounded-xl border border-highway-border bg-white p-2 md:min-h-[440px]">
+                            <div ref=${msgBoxRef} className="thin-scroll min-h-0 flex-1 space-y-2 overflow-y-auto rounded-xl border border-highway-border bg-white p-2">
                               ${loadingMessages ? html`<${SkeletonMessages} />` : visibleMessages.map((m) => html`<${MessageBubble} key=${m.id} msg=${m} />`)}
                             </div>
 
-                            <div className="mt-2 rounded-xl border border-highway-border bg-white p-2">
-                              <div className="mb-2 flex flex-wrap items-center gap-2">
+                            <div className="mt-1.5 rounded-xl border border-highway-border bg-white p-2">
+                              <div className="mb-1.5 flex flex-wrap items-center gap-2">
                                 <select value=${selectedChannel} onChange=${(e) => setSelectedChannel(e.target.value)} className="rounded-lg border border-highway-border px-2 py-2 text-xs">
                                   ${channelOptions.map((opt) => html`<option key=${opt.channel + opt.identityId} value=${`${opt.channel}|${opt.identityId}`}>${opt.label}</option>`)}
-                                  ${!channelOptions.length && html`<option value="">Canal indisponível</option>`}
+                                  ${!channelOptions.length && html`<option value="">Canal indisponÃ­vel</option>`}
                                 </select>
-                                <span className="text-xs text-slate-500">Atualização automática ativa</span>
+                                <span className="text-xs text-slate-500">AtualizaÃ§Ã£o automÃ¡tica ativa</span>
                               </div>
                               <textarea
                                 value=${draftText}
@@ -803,14 +949,14 @@
                                     sendMessage();
                                   }
                                 }}
-                                className="h-14 w-full resize-none rounded-lg border border-highway-border px-3 py-2 text-sm outline-none focus:border-highway-electric"
+                                className="h-12 w-full resize-none rounded-lg border border-highway-border px-3 py-2 text-sm outline-none focus:border-highway-electric"
                                 placeholder="Digite aqui. Enter envia, Shift+Enter quebra linha."
                               ></textarea>
-                              <div className="mt-2 flex items-center justify-between gap-2">
+                              <div className="mt-1.5 flex items-center justify-between gap-2">
                                 <button
                                   disabled=${sending}
                                   onClick=${sendMessage}
-                                  className="rounded-lg bg-gradient-to-r from-highway-electric to-blue-500 px-4 py-2 text-sm font-medium text-white shadow-glowBlue disabled:cursor-not-allowed disabled:opacity-60"
+                                  className="rounded-lg bg-gradient-to-r from-highway-electric to-blue-500 px-3 py-1.5 text-xs font-semibold text-white shadow-glowBlue disabled:cursor-not-allowed disabled:opacity-60"
                                 >
                                   ${sending ? "Enviando..." : "Enviar"}
                                 </button>
@@ -845,7 +991,7 @@
                             <tr key=${c.id} className="cursor-pointer border-t border-highway-border hover:bg-slate-50" onClick=${() => openContact(c.id)}>
                               <td className="px-3 py-2">${safe(c.name || "Sem nome")}</td>
                               <td className="px-3 py-2 font-mono text-xs">${safe(c.phone || "-")}</td>
-                              <td className="px-3 py-2">${c.scheduled ? "Sim" : "Não"}</td>
+                              <td className="px-3 py-2">${c.scheduled ? "Sim" : "NÃ£o"}</td>
                               <td className="px-3 py-2">${safe(CHANNEL_UI[c.main_channel]?.label || c.main_channel || "-")}</td>
                               <td className="px-3 py-2">${c.is_hot ? "Quente" : "Normal"}</td>
                             </tr>
@@ -860,17 +1006,17 @@
                   <${motion.section} key="tab_agenda" initial=${{ opacity: 0, x: 12 }} animate=${{ opacity: 1, x: 0 }} exit=${{ opacity: 0, x: -12 }} transition=${{ duration: .18 }} className="grid h-full min-h-0 grid-cols-[minmax(0,1fr)_320px] gap-3">
                     <div className="glass-card min-h-0 p-3">${renderCalendar()}</div>
                     <aside className="glass-card thin-scroll min-h-0 overflow-y-auto p-3">
-                      <h3 className="text-sm font-semibold">Próximos 5 agendamentos</h3>
+                      <h3 className="text-sm font-semibold">PrÃ³ximos 5 agendamentos</h3>
                       <div className="mt-2 space-y-2">
                         ${(agenda.next || []).length
                           ? (agenda.next || []).map((a) => html`
                               <div key=${a.id} className="rounded-lg border border-highway-border bg-white px-2 py-2 text-xs">
                                 <div className="font-semibold">${safe(a.customer_name || "Sem nome")}</div>
                                 <div className="font-mono text-[11px] text-slate-500">${safe(a.customer_phone || "-")}</div>
-                                <div className="mt-1 text-slate-500">${fmtDateTime(a.start_time)} • ${safe(a.status || "-")}</div>
+                                <div className="mt-1 text-slate-500">${fmtDateTime(a.start_time)} â€¢ ${safe(a.status || "-")}</div>
                               </div>
                             `)
-                          : html`<div className="text-xs text-slate-500">Não há agendamentos próximos.</div>`}
+                          : html`<div className="text-xs text-slate-500">NÃ£o hÃ¡ agendamentos prÃ³ximos.</div>`}
                       </div>
                     </aside>
                   </${motion.section}>
@@ -880,7 +1026,7 @@
                   <${motion.section} key="tab_humano" initial=${{ opacity: 0, x: 12 }} animate=${{ opacity: 1, x: 0 }} exit=${{ opacity: 0, x: -12 }} transition=${{ duration: .18 }} className="glass-card thin-scroll h-full min-h-0 overflow-y-auto p-3">
                     <div className="mb-2 flex items-center justify-between">
                       <h2 className="text-sm font-semibold">Fila de atendimento humano</h2>
-                      <span className="text-xs text-slate-500">Ordem por solicitação</span>
+                      <span className="text-xs text-slate-500">Ordem por solicitaÃ§Ã£o</span>
                     </div>
                     <div className="space-y-2">
                       ${humanQueue.map((q) => html`
@@ -888,7 +1034,7 @@
                           <div className="flex items-center justify-between gap-2">
                             <div>
                               <div className="text-sm font-semibold">${safe(q.name || "Sem nome")}</div>
-                              <div className="font-mono text-xs text-slate-500">${safe(q.phone || "-")} • ${safe(CHANNEL_UI[q.channel]?.label || q.channel || "-")}</div>
+                              <div className="font-mono text-xs text-slate-500">${safe(q.phone || "-")} â€¢ ${safe(CHANNEL_UI[q.channel]?.label || q.channel || "-")}</div>
                             </div>
                             <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-700">${safe(q.human_status || "-")}</span>
                           </div>
@@ -896,13 +1042,13 @@
                           <div className="text-xs text-slate-500">Solicitado em: ${fmtDateTime(q.human_requested_at)}</div>
                           <div className="text-xs text-slate-500">Caminho no menu: ${safe(q.menu_path_summary || "Sem trilha")}</div>
                           <div className="mt-2 flex items-center gap-2">
-                            <button onClick=${() => humanAction(q.conversation_id, "accept")} className="inline-flex items-center gap-1 rounded-lg border border-emerald-200 bg-gradient-to-r from-emerald-400 to-emerald-500 px-2 py-1 text-xs font-medium text-white">✓ Aceitar</button>
-                            <button onClick=${() => humanAction(q.conversation_id, "ignore")} className="inline-flex items-center gap-1 rounded-lg border border-rose-200 bg-gradient-to-r from-rose-400 to-rose-500 px-2 py-1 text-xs font-medium text-white">✕ Ignorar</button>
+                            <button onClick=${() => humanAction(q.conversation_id, "accept")} className="inline-flex items-center gap-1 rounded-lg border border-emerald-200 bg-gradient-to-r from-emerald-400 to-emerald-500 px-2 py-1 text-xs font-medium text-white">âœ“ Aceitar</button>
+                            <button onClick=${() => humanAction(q.conversation_id, "ignore")} className="inline-flex items-center gap-1 rounded-lg border border-rose-200 bg-gradient-to-r from-rose-400 to-rose-500 px-2 py-1 text-xs font-medium text-white">âœ• Ignorar</button>
                             <button onClick=${() => { setTab("conversas"); setSelectedConversationId(q.conversation_id); }} className="rounded-lg border border-highway-border px-2 py-1 text-xs text-slate-600">Ver conversa</button>
                           </div>
                         </div>
                       `)}
-                      ${!humanQueue.length && html`<div className="text-xs text-slate-500">Sem solicitações no momento.</div>`}
+                      ${!humanQueue.length && html`<div className="text-xs text-slate-500">Sem solicitaÃ§Ãµes no momento.</div>`}
                     </div>
                   </${motion.section}>
                 `}
@@ -927,18 +1073,18 @@
                   <div>Nome: <b>${safe(contactModal.data?.main?.name || "Sem nome")}</b></div>
                   <div>Telefone: <span className="font-mono text-xs">${safe(contactModal.data?.main?.phone || "-")}</span></div>
                   <div>Status cliente: ${safe(contactModal.data?.main?.customer_status || "-")}</div>
-                  <div>Agendado: ${contactModal.data?.main?.scheduled ? "Sim" : "Não"}</div>
-                  <div>Perfil quente: ${contactModal.data?.main?.is_hot ? "Sim" : "Não"}</div>
-                  <div>Última interação: ${fmtDateTime(contactModal.data?.main?.last_interaction_at)}</div>
+                  <div>Agendado: ${contactModal.data?.main?.scheduled ? "Sim" : "NÃ£o"}</div>
+                  <div>Perfil quente: ${contactModal.data?.main?.is_hot ? "Sim" : "NÃ£o"}</div>
+                  <div>Ãšltima interaÃ§Ã£o: ${fmtDateTime(contactModal.data?.main?.last_interaction_at)}</div>
                 </div>
                 <div className="rounded-xl border border-highway-border bg-white p-3">
                   <div className="mb-1 text-xs uppercase text-slate-500">Dados FC VIP (API)</div>
                   ${contactModal.data?.fcvip_api?.status === "completed"
                     ? html`
-                        <div>Cliente FC VIP: ${contactModal.data?.fcvip_api?.customer_exists ? "Sim" : "Não"}</div>
+                        <div>Cliente FC VIP: ${contactModal.data?.fcvip_api?.customer_exists ? "Sim" : "NÃ£o"}</div>
                         <div>Status FC VIP: ${safe(contactModal.data?.fcvip_api?.customer_status || "-")}</div>
                       `
-                    : html`<div className="text-slate-500">${safe(contactModal.data?.fcvip_api?.message || "Consulta indisponível no momento.")}</div>`}
+                    : html`<div className="text-slate-500">${safe(contactModal.data?.fcvip_api?.message || "Consulta indisponÃ­vel no momento.")}</div>`}
                 </div>
                 <div className="rounded-xl border border-highway-border bg-white p-3">
                   <div className="mb-1 text-xs uppercase text-slate-500">Canais conectados</div>
@@ -946,9 +1092,9 @@
                   ${!(contactModal.data?.channels || []).length && html`<div className="text-slate-500">Sem canais extras</div>`}
                 </div>
                 <div className="rounded-xl border border-highway-border bg-white p-3">
-                  <div className="mb-1 text-xs uppercase text-slate-500">Memórias importantes</div>
+                  <div className="mb-1 text-xs uppercase text-slate-500">MemÃ³rias importantes</div>
                   ${(contactModal.data?.memories || []).slice(0, 20).map((m) => html`<div key=${m.key + m.value}>${safe(m.label || m.key)}: ${safe(m.value || "-")}</div>`)}
-                  ${!(contactModal.data?.memories || []).length && html`<div className="text-slate-500">Sem memórias</div>`}
+                  ${!(contactModal.data?.memories || []).length && html`<div className="text-slate-500">Sem memÃ³rias</div>`}
                 </div>
               </div>
             </div>
@@ -967,8 +1113,8 @@
                 <div><b>Caminho no menu:</b> ${safe(urgentModal.item.menu_path_summary || "Sem trilha")}</div>
               </div>
               <div className="mt-3 flex flex-wrap items-center gap-2">
-                <button onClick=${() => humanAction(urgentModal.item.conversation_id, "accept")} className="inline-flex items-center gap-1 rounded-lg border border-emerald-200 bg-gradient-to-r from-emerald-400 to-emerald-500 px-3 py-2 text-xs font-semibold text-white">✓ Aceitar solicitação</button>
-                <button onClick=${() => humanAction(urgentModal.item.conversation_id, "ignore")} className="inline-flex items-center gap-1 rounded-lg border border-rose-200 bg-gradient-to-r from-rose-400 to-rose-500 px-3 py-2 text-xs font-semibold text-white">✕ Ignorar</button>
+                <button onClick=${() => humanAction(urgentModal.item.conversation_id, "accept")} className="inline-flex items-center gap-1 rounded-lg border border-emerald-200 bg-gradient-to-r from-emerald-400 to-emerald-500 px-3 py-2 text-xs font-semibold text-white">âœ“ Aceitar solicitaÃ§Ã£o</button>
+                <button onClick=${() => humanAction(urgentModal.item.conversation_id, "ignore")} className="inline-flex items-center gap-1 rounded-lg border border-rose-200 bg-gradient-to-r from-rose-400 to-rose-500 px-3 py-2 text-xs font-semibold text-white">âœ• Ignorar</button>
                 <button onClick=${() => setUrgentModal((s) => ({ ...s, open: false, snoozedUntil: Date.now() + 120000 }))} className="rounded-lg border border-highway-border px-3 py-2 text-xs">Fechar por 2 min</button>
               </div>
             </div>
@@ -981,3 +1127,6 @@
   </script>
 </body>
 </html>
+
+
+

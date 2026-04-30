@@ -4,7 +4,7 @@ from uuid import UUID
 from sqlalchemy import Boolean, DateTime, ForeignKey, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.core.database import Base, TimestampMixin, UUIDPrimaryKeyMixin
+from app.core.database import Base, TimestampMixin, UUIDPrimaryKeyMixin, json_column
 
 
 class Conversation(UUIDPrimaryKeyMixin, TimestampMixin, Base):
@@ -39,6 +39,8 @@ class Conversation(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     human_ignored_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
     human_ignored_by: Mapped[str | None] = mapped_column(String(120), nullable=True)
     chatbot_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, index=True)
+    customer_collection_data: Mapped[dict] = json_column()
+    customer_collection_step: Mapped[str | None] = mapped_column(String(80), nullable=True, index=True)
 
     contact = relationship("Contact", back_populates="conversations")
     messages = relationship("Message", back_populates="conversation")

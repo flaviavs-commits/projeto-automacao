@@ -1589,3 +1589,50 @@ Ajustes aplicados:
 - modal urgente usando caminho simplificado (`menu_path_summary`);
 - aba Banco de Dados em lista unica com busca e modal de detalhe;
 - agenda em calendario semanal com exibicao em horario brasileiro.
+
+## Registro de execucao interrompida - 2026-04-30 (menu fechado WhatsApp FC VIP)
+
+Status:
+- Execucao **interrompida no meio** por acao do usuario durante `pytest` completo.
+- Este registro existe para retomar exatamente do ponto correto, sem retrabalho.
+
+O que foi executado antes da interrupcao:
+- TDD menu fechado atualizado:
+  - `tests/test_menu_bot_service.py` reescrito para fluxo de 5 etapas + menus numericos.
+- Servico principal atualizado:
+  - `app/services/menu_bot_service.py` reescrito para:
+    - estados `collect_name`, `collect_phone`, `collect_email`, `collect_instagram`, `collect_facebook`;
+    - validacoes obrigatorias de nome/telefone/email;
+    - Instagram/Facebook com pulo interno seguro;
+    - retorno padrao com `chatbot_should_reply` e `collected_customer_data`.
+- Persistencia de coleta adicionada:
+  - `app/models/conversation.py` recebeu:
+    - `customer_collection_data`
+    - `customer_collection_step`
+  - migration nova criada:
+    - `alembic/versions/20260430_0006_menu_bot_collection_state.py`.
+- Worker integrado ao fluxo sem LLM:
+  - `app/workers/tasks.py` atualizado para:
+    - passar identidades + dados de coleta ao `MenuBotService`;
+    - persistir estado de coleta na conversa;
+    - finalizar cadastro coletado com merge seguro de contato;
+    - registrar `AuditLog` `customer_data_collected`.
+- Testes de persistencia/merge criados:
+  - `tests/test_menu_bot_collection_finalize.py`.
+- Compatibilidade de teste legado:
+  - `app/api/routes/dashboard.py` ganhou alias `dashboard_op_state = dashboard_op_state_compat`.
+
+Resultados de teste ja confirmados:
+- `cmd /c .\.venv\Scripts\python.exe -m pytest tests\test_menu_bot_service.py` -> PASS (44).
+- `cmd /c .\.venv\Scripts\python.exe -m pytest tests\test_menu_bot_collection_finalize.py` -> PASS (2).
+- `cmd /c .\.venv\Scripts\python.exe -m pytest tests\test_menu_bot_service.py tests\test_menu_bot_collection_finalize.py` -> PASS (46).
+
+Ponto exato onde parou:
+- Rodando `cmd /c .\.venv\Scripts\python.exe -m pytest tests` (suite completa).
+- Execucao foi cancelada pelo usuario antes de concluir.
+
+Proximo passo imediato ao retomar:
+1. Reexecutar `cmd /c .\.venv\Scripts\python.exe -m pytest tests` e corrigir regressao restante.
+2. Rodar `cmd /c .\.venv\Scripts\python.exe -m compileall app tests`.
+3. Rodar `cmd /c .\.venv\Scripts\python.exe qa_tudo.py --no-dashboard --no-pause`.
+4. Atualizar `README.md`, `ia.md` e `humano.md` com o resultado final consolidado.

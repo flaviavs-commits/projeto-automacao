@@ -16,6 +16,7 @@ from app.models.job import Job
 from app.models.message import Message
 from app.models.post import Post
 from app.services.contact_memory_service import ContactMemoryService
+from app.services.customer_identity_service import CustomerIdentityService
 from app.services.fcvip_partner_api_service import FCVIPPartnerAPIService
 from app.services.instagram_service import InstagramService
 from app.services.instagram_publish_service import InstagramPublishService
@@ -254,6 +255,359 @@ def _normalize_whatsapp_phone(value: str | None) -> str:
         return ""
     digits = "".join(ch for ch in raw if ch.isdigit())
     return digits or ""
+
+
+def _normalize_whatsapp_identity(value: str | None) -> str:
+    raw = str(value or "").strip()
+    if not raw:
+        return ""
+    lowered = raw.lower()
+    if lowered.endswith("@s.whatsapp.net"):
+        digits = "".join(ch for ch in lowered[: -len("@s.whatsapp.net")] if ch.isdigit())
+        return digits
+    if lowered.endswith("@c.us"):
+        digits = "".join(ch for ch in lowered[: -len("@c.us")] if ch.isdigit())
+        return digits
+    if lowered.endswith(_WHATSAPP_LID_SUFFIX):
+        digits = "".join(ch for ch in lowered[: -len(_WHATSAPP_LID_SUFFIX)] if ch.isdigit())
+        return f"{digits}{_WHATSAPP_LID_SUFFIX}" if digits else lowered
+    if "@" in lowered:
+        return lowered
+    digits = "".join(ch for ch in raw if ch.isdigit())
+    return digits or lowered
+
+
+def _normalize_collection_email(value: str | None) -> str:
+    return str(value or "").strip().lower()
+
+
+def _normalize_instagram_identity(value: str | None) -> str:
+    raw = str(value or "").strip().lower()
+    if not raw:
+        return ""
+    return raw.lstrip("@")
+
+
+def _normalize_facebook_identity(value: str | None) -> str:
+    return str(value or "").strip().lower()
+
+
+def _safe_link_identity(*, db, contact: Contact, platform: str, platform_user_id: str, conflicts: list[dict]) -> None:
+    normalized_platform = str(platform or "").strip().lower()
+    normalized_value = str(platform_user_id or "").strip()
+    if not normalized_platform or not normalized_value:
+        return
+
+    existing = (
+        db.execute(
+            select(ContactIdentity).where(
+                ContactIdentity.platform == normalized_platform,
+                ContactIdentity.platform_user_id == normalized_value,
+            )
+        )
+        .scalars()
+        .first()
+    )
+    if existing is not None and existing.contact_id != contact.id:
+        conflicts.append(
+            {
+                "platform": normalized_platform,
+                "value": normalized_value,
+                "existing_contact_id": str(existing.contact_id),
+                "target_contact_id": str(contact.id),
+            }
+        )
+        return
+
+    CustomerIdentityService().upsert_identity_for_contact(
+        db=db,
+        contact=contact,
+        platform=normalized_platform,
+        platform_user_id=normalized_value,
+    )
+
+
+def _extract_collection_whatsapp_candidates(*, source_message: Message | None, contact: Contact | None) -> list[str]:
+    candidates: list[str] = []
+    if contact is not None:
+        normalized_phone = _normalize_whatsapp_identity(str(contact.phone or ""))
+        if normalized_phone:
+            candidates.append(normalized_phone)
+    raw_payload = source_message.raw_payload if source_message is not None and isinstance(source_message.raw_payload, dict) else {}
+    for key in ("_resolved_platform_user_id", "_preferred_phone_number"):
+        normalized_value = _normalize_whatsapp_identity(str(raw_payload.get(key) or ""))
+        if normalized_value and normalized_value not in candidates:
+            candidates.append(normalized_value)
+    for item in raw_payload.get("_alternate_platform_user_ids") or []:
+        normalized_value = _normalize_whatsapp_identity(str(item or ""))
+        if normalized_value and normalized_value not in candidates:
+            candidates.append(normalized_value)
+    return candidates
+
+
+def _find_collection_contact_match(
+    *,
+    db,
+    current_contact: Contact | None,
+    collection_data: dict,
+    whatsapp_candidates: list[str],
+) -> Contact | None:
+    current_contact_id = str(current_contact.id) if current_contact is not None else ""
+
+    for candidate in whatsapp_candidates:
+        identity = (
+            db.execute(
+                select(ContactIdentity).where(
+                    ContactIdentity.platform == "whatsapp",
+                    ContactIdentity.platform_user_id == candidate,
+                )
+            )
+            .scalars()
+            .first()
+        )
+        if identity is not None and str(identity.contact_id) != current_contact_id:
+            return identity.contact
+
+    normalized_phone = _normalize_whatsapp_phone(str(collection_data.get("phone_normalized") or ""))
+    if normalized_phone:
+        contacts_with_phone = (
+            db.execute(select(Contact).where(Contact.phone.isnot(None)))
+            .scalars()
+            .all()
+        )
+        for candidate_contact in contacts_with_phone:
+            if current_contact is not None and candidate_contact.id == current_contact.id:
+                continue
+            contact_phone = _normalize_whatsapp_phone(str(candidate_contact.phone or ""))
+            if contact_phone and contact_phone == normalized_phone:
+                return candidate_contact
+
+    normalized_email = _normalize_collection_email(collection_data.get("email"))
+    if normalized_email:
+        by_email = (
+            db.execute(
+                select(Contact).where(
+                    Contact.email.isnot(None),
+                    func.lower(Contact.email) == normalized_email,
+                )
+            )
+            .scalars()
+            .first()
+        )
+        if by_email is not None and (current_contact is None or by_email.id != current_contact.id):
+            return by_email
+
+    instagram_value = _normalize_instagram_identity(collection_data.get("instagram"))
+    if instagram_value:
+        by_ig_identity = (
+            db.execute(
+                select(ContactIdentity).where(
+                    ContactIdentity.platform == "instagram",
+                    ContactIdentity.platform_user_id == instagram_value,
+                )
+            )
+            .scalars()
+            .first()
+        )
+        if by_ig_identity is not None and str(by_ig_identity.contact_id) != current_contact_id:
+            return by_ig_identity.contact
+
+        by_ig_legacy = (
+            db.execute(
+                select(Contact).where(
+                    Contact.instagram_user_id.isnot(None),
+                    func.lower(Contact.instagram_user_id) == instagram_value,
+                )
+            )
+            .scalars()
+            .first()
+        )
+        if by_ig_legacy is not None and (current_contact is None or by_ig_legacy.id != current_contact.id):
+            return by_ig_legacy
+
+    facebook_value = _normalize_facebook_identity(collection_data.get("facebook"))
+    if facebook_value:
+        by_fb_identity = (
+            db.execute(
+                select(ContactIdentity).where(
+                    ContactIdentity.platform == "facebook",
+                    ContactIdentity.platform_user_id == facebook_value,
+                )
+            )
+            .scalars()
+            .first()
+        )
+        if by_fb_identity is not None and str(by_fb_identity.contact_id) != current_contact_id:
+            return by_fb_identity.contact
+
+    return None
+
+
+def _finalize_collected_customer_data(
+    *,
+    db,
+    conversation: Conversation,
+    contact: Contact | None,
+    source_message: Message | None,
+    collection_data: dict,
+) -> dict:
+    required_name = str(collection_data.get("name") or "").strip()
+    required_phone = str(collection_data.get("phone_normalized") or "").strip()
+    required_email = _normalize_collection_email(collection_data.get("email"))
+    if not (required_name and required_phone and required_email):
+        return {"status": "incomplete"}
+
+    if contact is None:
+        contact = db.get(Contact, conversation.contact_id)
+    if contact is None:
+        return {"status": "missing_contact"}
+
+    whatsapp_candidates = _extract_collection_whatsapp_candidates(source_message=source_message, contact=contact)
+    matched_contact = _find_collection_contact_match(
+        db=db,
+        current_contact=contact,
+        collection_data=collection_data,
+        whatsapp_candidates=whatsapp_candidates,
+    )
+    target_contact = contact
+    merged_from_contact_id: str | None = None
+    field_conflicts: list[dict] = []
+    identity_conflicts: list[dict] = []
+
+    if matched_contact is not None and matched_contact.id != contact.id:
+        merged_from_contact_id = str(contact.id)
+        target_contact = matched_contact
+        conversation.contact_id = target_contact.id
+
+        if not str(target_contact.name or "").strip() and str(contact.name or "").strip():
+            target_contact.name = contact.name
+        if not str(target_contact.phone or "").strip() and str(contact.phone or "").strip():
+            target_contact.phone = contact.phone
+        if not str(target_contact.email or "").strip() and str(contact.email or "").strip():
+            target_contact.email = contact.email
+        if not str(target_contact.instagram_user_id or "").strip() and str(contact.instagram_user_id or "").strip():
+            target_contact.instagram_user_id = contact.instagram_user_id
+
+        linked_identities = (
+            db.execute(select(ContactIdentity).where(ContactIdentity.contact_id == contact.id))
+            .scalars()
+            .all()
+        )
+        for identity in linked_identities:
+            _safe_link_identity(
+                db=db,
+                contact=target_contact,
+                platform=str(identity.platform or ""),
+                platform_user_id=str(identity.platform_user_id or ""),
+                conflicts=identity_conflicts,
+            )
+
+    if not str(target_contact.name or "").strip():
+        target_contact.name = required_name
+    elif str(target_contact.name or "").strip().lower() != required_name.lower():
+        field_conflicts.append(
+            {
+                "field": "name",
+                "existing_value": str(target_contact.name or "").strip(),
+                "incoming_value": required_name,
+            }
+        )
+
+    if not str(target_contact.phone or "").strip():
+        target_contact.phone = required_phone
+    else:
+        existing_phone = _normalize_whatsapp_phone(str(target_contact.phone or ""))
+        incoming_phone = _normalize_whatsapp_phone(required_phone)
+        if existing_phone and incoming_phone and existing_phone != incoming_phone:
+            field_conflicts.append(
+                {
+                    "field": "phone",
+                    "existing_value": str(target_contact.phone or "").strip(),
+                    "incoming_value": required_phone,
+                }
+            )
+
+    if not str(target_contact.email or "").strip():
+        target_contact.email = required_email
+    else:
+        existing_email = _normalize_collection_email(target_contact.email)
+        if existing_email and required_email and existing_email != required_email:
+            field_conflicts.append(
+                {
+                    "field": "email",
+                    "existing_value": str(target_contact.email or "").strip(),
+                    "incoming_value": required_email,
+                }
+            )
+
+    instagram_value = _normalize_instagram_identity(collection_data.get("instagram"))
+    if instagram_value:
+        if not str(target_contact.instagram_user_id or "").strip():
+            target_contact.instagram_user_id = instagram_value
+        elif str(target_contact.instagram_user_id or "").strip().lower() != instagram_value:
+            field_conflicts.append(
+                {
+                    "field": "instagram_user_id",
+                    "existing_value": str(target_contact.instagram_user_id or "").strip(),
+                    "incoming_value": instagram_value,
+                }
+            )
+
+    target_contact.is_temporary = False
+    whatsapp_identity_values: list[str] = []
+    primary_whatsapp_identity = _normalize_whatsapp_identity(required_phone)
+    if primary_whatsapp_identity:
+        whatsapp_identity_values.append(primary_whatsapp_identity)
+    for candidate in whatsapp_candidates:
+        normalized_candidate = _normalize_whatsapp_identity(candidate)
+        if normalized_candidate and normalized_candidate not in whatsapp_identity_values:
+            whatsapp_identity_values.append(normalized_candidate)
+    for normalized_candidate in whatsapp_identity_values:
+        _safe_link_identity(
+            db=db,
+            contact=target_contact,
+            platform="whatsapp",
+            platform_user_id=normalized_candidate,
+            conflicts=identity_conflicts,
+        )
+    if instagram_value:
+        _safe_link_identity(db=db, contact=target_contact, platform="instagram", platform_user_id=instagram_value, conflicts=identity_conflicts)
+    facebook_value = _normalize_facebook_identity(collection_data.get("facebook"))
+    if facebook_value:
+        _safe_link_identity(db=db, contact=target_contact, platform="facebook", platform_user_id=facebook_value, conflicts=identity_conflicts)
+
+    db.add(
+        AuditLog(
+            entity_type="contact",
+            entity_id=target_contact.id,
+            event_type="customer_data_collected",
+            details={
+                "contact_id": str(target_contact.id),
+                "conversation_id": str(conversation.id),
+                "merged_from_contact_id": merged_from_contact_id,
+                "source": "whatsapp/chatbot",
+                "field_conflicts": field_conflicts,
+                "identity_conflicts": identity_conflicts,
+                "collected_fields": {
+                    "name": required_name,
+                    "phone_normalized": required_phone,
+                    "email": required_email,
+                    "instagram": instagram_value or None,
+                    "facebook": facebook_value or None,
+                },
+            },
+        )
+    )
+    conversation.customer_collection_data = {}
+    conversation.customer_collection_step = None
+
+    return {
+        "status": "completed",
+        "contact_id": str(target_contact.id),
+        "merged_from_contact_id": merged_from_contact_id,
+        "field_conflicts": field_conflicts,
+        "identity_conflicts": identity_conflicts,
+    }
 
 
 def _resolve_customer_profile_for_reply(*, contact: Contact | None) -> dict:
@@ -784,12 +1138,33 @@ def generate_reply(payload: dict) -> dict:
                     raise RuntimeError(f"llm_reply_generation_failed: status={llm_status}")
             else:
                 is_new_chat = not bool(str(conversation.menu_state or "").strip())
+                contact_identities = (
+                    db.execute(
+                        select(ContactIdentity).where(ContactIdentity.contact_id == conversation.contact_id)
+                    )
+                    .scalars()
+                    .all()
+                )
+                identity_payload = [
+                    {
+                        "platform": str(identity.platform or ""),
+                        "platform_user_id": str(identity.platform_user_id or ""),
+                        "normalized_value": str(identity.normalized_value or ""),
+                    }
+                    for identity in contact_identities
+                ]
                 menu_result = MenuBotService().handle_message(
                     message_text=source_text,
-                    conversation=SimpleNamespace(menu_state=conversation.menu_state, is_new_chat=is_new_chat),
+                    conversation=SimpleNamespace(
+                        menu_state=conversation.menu_state,
+                        is_new_chat=is_new_chat,
+                        customer_collection_data=getattr(conversation, "customer_collection_data", {}) or {},
+                    ),
                     contact=contact,
                     customer_exists=customer_exists,
+                    identities=identity_payload,
                     memories=effective_key_memories,
+                    collection_data=getattr(conversation, "customer_collection_data", {}) or {},
                 )
                 llm_result = {"status": "completed", "model": "menu_bot"}
                 llm_status = "completed"
@@ -798,9 +1173,12 @@ def generate_reply(payload: dict) -> dict:
                 if not reply_text:
                     raise RuntimeError("menu_bot_failed_without_reply")
                 conversation.menu_state = str(menu_result.get("next_state") or conversation.menu_state or "main_menu")
+                conversation.customer_collection_data = dict(menu_result.get("collected_customer_data") or {})
+                conversation.customer_collection_step = menu_result.get("customer_collection_step")
                 if bool(menu_result.get("close_conversation")):
                     conversation.status = "closed"
                     conversation.menu_state = "end"
+                    conversation.customer_collection_step = None
                 menu_needs_human = bool(menu_result.get("needs_human"))
                 conversation.needs_human = menu_needs_human
                 conversation.human_reason = str(menu_result.get("human_reason") or "").strip() or None
@@ -821,6 +1199,22 @@ def generate_reply(payload: dict) -> dict:
                             },
                         )
                     )
+                collection_finalize_result = {"status": "skipped"}
+                collected_customer_data = dict(menu_result.get("collected_customer_data") or {})
+                has_required_collection = bool(
+                    str(collected_customer_data.get("name") or "").strip()
+                    and str(collected_customer_data.get("phone_normalized") or "").strip()
+                    and str(collected_customer_data.get("email") or "").strip()
+                )
+                if has_required_collection and menu_result.get("customer_collection_step") in {None, ""}:
+                    collection_finalize_result = _finalize_collected_customer_data(
+                        db=db,
+                        conversation=conversation,
+                        contact=contact,
+                        source_message=source_message,
+                        collection_data=collected_customer_data,
+                    )
+                    contact = db.get(Contact, conversation.contact_id)
                 memory_saved_keys = _upsert_menu_memory_updates(
                     db=db,
                     contact_id=conversation.contact_id,
@@ -830,6 +1224,8 @@ def generate_reply(payload: dict) -> dict:
                         source=customer_status_source,
                     ),
                 )
+                if collection_finalize_result.get("status") == "completed":
+                    memory_saved_keys.append("customer_data_collected")
             if spam_notice:
                 reply_text = f"{spam_notice}\n\n{reply_text}".strip()
             if _should_mark_conversation_closed(llm_model=llm_model, reply_text=reply_text):
