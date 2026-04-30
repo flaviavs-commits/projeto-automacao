@@ -662,7 +662,7 @@
             <div className="min-h-0 flex-1 overflow-hidden">
               <${AnimatePresence} mode="wait">
                 ${tab === "conversas" && html`
-                  <${motion.section} key="tab_conversas" initial=${{ opacity: 0, y: 8 }} animate=${{ opacity: 1, y: 0 }} exit=${{ opacity: 0, y: -8 }} transition=${{ duration: .18 }} className="grid h-full min-h-0 grid-cols-[340px_minmax(0,1fr)] gap-3">
+                  <${motion.section} key="tab_conversas" initial=${{ opacity: 0, y: 8 }} animate=${{ opacity: 1, y: 0 }} exit=${{ opacity: 0, y: -8 }} transition=${{ duration: .18 }} className="grid h-full min-h-0 grid-cols-[420px_minmax(0,1fr)] gap-3">
                     <aside className="glass-card flex min-h-0 flex-col p-3">
                       <div className="mb-2 text-sm font-semibold">Conversas (${conversations.length})</div>
                       <div className="mb-2 space-y-2">
@@ -705,7 +705,7 @@
                           </label>
                         </div>
                       </div>
-                      <div className="thin-scroll min-h-0 flex-1 space-y-2 overflow-y-auto pr-1">
+                          <div className="thin-scroll min-h-0 flex-1 space-y-2 overflow-y-auto pr-1 h-[clamp(420px,62vh,780px)]">
                         ${conversations.map((item) => html`
                           <${ConversationRow}
                             key=${item.id}
