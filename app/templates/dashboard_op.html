@@ -1,0 +1,966 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>Central OP de Mensagens - Highway Edition</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ["Inter", "Geist Sans", "ui-sans-serif", "system-ui"],
+            mono: ["Geist Mono", "ui-monospace", "SFMono-Regular", "Menlo", "monospace"],
+          },
+          colors: {
+            highway: {
+              bg: "#F8FAFC",
+              border: "#E2E8F0",
+              electric: "#3B82F6",
+              cyber: "#8B5CF6",
+              emerald: "#34D399",
+            },
+          },
+          boxShadow: {
+            glowBlue: "0 0 0 1px rgba(59,130,246,.25), 0 10px 30px rgba(59,130,246,.18)",
+            glowGreen: "0 0 0 1px rgba(52,211,153,.4), 0 0 24px rgba(52,211,153,.35)",
+          },
+        },
+      },
+    };
+  </script>
+  <style>
+    @import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap");
+    @import url("https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&display=swap");
+    @import url("https://fonts.googleapis.com/css2?family=Geist+Mono:wght@400;500;600&display=swap");
+    html, body {
+      height: 100%;
+      margin: 0;
+      overflow: hidden;
+      background: #F8FAFC;
+    }
+    * { box-sizing: border-box; }
+    .glass-card {
+      background: rgba(255,255,255,.88);
+      border: 1px solid #E2E8F0;
+      backdrop-filter: blur(10px);
+      border-radius: 14px;
+    }
+    .thin-scroll {
+      scrollbar-width: thin;
+      scrollbar-color: #CBD5E1 transparent;
+    }
+    .thin-scroll::-webkit-scrollbar {
+      width: 7px;
+      height: 7px;
+    }
+    .thin-scroll::-webkit-scrollbar-thumb {
+      background: #CBD5E1;
+      border-radius: 999px;
+    }
+    .thin-scroll::-webkit-scrollbar-track {
+      background: transparent;
+    }
+    .hatch {
+      background-image: repeating-linear-gradient(
+        -45deg,
+        rgba(139, 92, 246, 0.08) 0,
+        rgba(139, 92, 246, 0.08) 8px,
+        rgba(139, 92, 246, 0.02) 8px,
+        rgba(139, 92, 246, 0.02) 16px
+      );
+    }
+    .pulse-dot {
+      position: relative;
+    }
+    .pulse-dot::after {
+      content: "";
+      position: absolute;
+      inset: -3px;
+      border-radius: 999px;
+      border: 1px solid currentColor;
+      opacity: .45;
+      animation: pulse 1.8s ease-out infinite;
+    }
+    @keyframes pulse {
+      0% { transform: scale(.8); opacity: .55; }
+      100% { transform: scale(1.6); opacity: 0; }
+    }
+    .skeleton {
+      background: linear-gradient(90deg, #EDF2F7 25%, #E2E8F0 37%, #EDF2F7 63%);
+      background-size: 400% 100%;
+      animation: shimmer 1.2s ease-in-out infinite;
+    }
+    @keyframes shimmer {
+      0% { background-position: 100% 0; }
+      100% { background-position: 0 0; }
+    }
+  </style>
+</head>
+<body class="font-sans text-slate-800">
+  <div id="root" class="h-screen w-screen"></div>
+
+  <script type="module">
+    import React, { useEffect, useMemo, useRef, useState } from "https://esm.sh/react@18.2.0";
+    import { createRoot } from "https://esm.sh/react-dom@18.2.0/client";
+    import htm from "https://esm.sh/htm@3.1.1";
+
+    const html = htm.bind(React.createElement);
+    const AnimatePresence = ({ children }) => children;
+    const motion = {
+      section: (props) => React.createElement("section", props, props.children),
+    };
+
+    function create(init) {
+      let state;
+      const listeners = new Set();
+      const setState = (updater) => {
+        const partial = typeof updater === "function" ? updater(state) : updater;
+        state = { ...state, ...partial };
+        listeners.forEach((listener) => listener());
+      };
+      const getState = () => state;
+      state = init(setState, getState);
+      return function useStore(selector = (s) => s) {
+        const [slice, setSlice] = useState(() => selector(state));
+        useEffect(() => {
+          const onChange = () => setSlice(() => selector(state));
+          listeners.add(onChange);
+          return () => listeners.delete(onChange);
+        }, []);
+        return slice;
+      };
+    }
+
+    const CHANNEL_UI = {
+      whatsapp: { label: "WhatsApp", accent: "emerald", glyph: "W", bubble: "border-emerald-400" },
+      instagram: { label: "Instagram", accent: "violet", glyph: "I", bubble: "border-violet-400" },
+      facebook: { label: "Facebook", accent: "blue", glyph: "F", bubble: "border-blue-400" },
+      tiktok: { label: "TikTok", accent: "slate", glyph: "T", bubble: "border-slate-400" },
+    };
+
+    const useOpStore = create((set, get) => ({
+      humanQueue: [],
+      drafts: {},
+      setHumanQueue: (items) => set({ humanQueue: items || [] }),
+      setDraft: (conversationId, text) => set((state) => ({
+        drafts: { ...state.drafts, [conversationId]: text },
+      })),
+      getDraft: (conversationId) => (get().drafts || {})[conversationId] || "",
+      clearDraft: (conversationId) => set((state) => {
+        const next = { ...(state.drafts || {}) };
+        delete next[conversationId];
+        return { drafts: next };
+      }),
+    }));
+
+    async function api(url, options) {
+      const res = await fetch(url, options || {});
+      let data = null;
+      try { data = await res.json(); } catch (_) { data = null; }
+      if (!res.ok) {
+        throw new Error((data && data.detail) || "Não foi possível concluir agora.");
+      }
+      return data;
+    }
+
+    function fmtDateTime(value) {
+      if (!value) return "-";
+      try {
+        return new Intl.DateTimeFormat("pt-BR", {
+          dateStyle: "short",
+          timeStyle: "short",
+          timeZone: "America/Sao_Paulo",
+        }).format(new Date(value));
+      } catch (_) {
+        return String(value || "-");
+      }
+    }
+
+    function safe(v) {
+      return String(v || "");
+    }
+
+    function normalizeWhatsapp(value) {
+      const raw = String(value || "").trim().toLowerCase();
+      if (!raw || raw.includes("@") || raw.endsWith("@lid")) return "";
+      return raw.replace(/\D/g, "");
+    }
+
+    function StatusOrb({ label, status, channel }) {
+      const isUp = ["conectado", "disponivel"].includes(String(status || "").toLowerCase());
+      const color = isUp ? "text-emerald-400" : "text-slate-400";
+      const ui = CHANNEL_UI[channel] || { glyph: "?" };
+      return html`
+        <div className="inline-flex items-center gap-2 rounded-full border border-highway-border bg-white/90 px-3 py-1.5 text-xs font-medium text-slate-600">
+          <span className=${`pulse-dot relative inline-flex h-2.5 w-2.5 rounded-full ${isUp ? "bg-emerald-400" : "bg-slate-300"} ${color}`}></span>
+          <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-slate-100 font-mono text-[10px]">${ui.glyph}</span>
+          <span>${label}: ${status || "indisponível"}</span>
+        </div>
+      `;
+    }
+
+    function ToggleSwitch({ checked, onClick, disabled }) {
+      return html`
+        <button
+          disabled=${disabled}
+          onClick=${onClick}
+          className=${`relative inline-flex h-8 w-16 items-center rounded-full border transition ${
+            checked
+              ? "border-emerald-300 bg-emerald-100 shadow-glowGreen"
+              : "border-slate-300 bg-slate-200"
+          } ${disabled ? "opacity-60 cursor-not-allowed" : "cursor-pointer"}`}
+        >
+          <span className=${`absolute left-1 top-1 h-6 w-6 rounded-full bg-white shadow transition-transform ${checked ? "translate-x-8" : ""}`}></span>
+          <span className="sr-only">Alternar chatbot</span>
+        </button>
+      `;
+    }
+
+    function SkeletonMessages() {
+      return html`
+        <div className="space-y-3 p-3">
+          ${[1,2,3,4,5].map((i) => html`
+            <div key=${i} className=${`skeleton h-14 rounded-xl ${i % 2 ? "w-3/4" : "w-2/3 ml-auto"}`}></div>
+          `)}
+        </div>
+      `;
+    }
+
+    function ConversationRow({ item, selected, onClick }) {
+      const isHot = !!item.is_hot;
+      const channel = CHANNEL_UI[item.channel] || CHANNEL_UI.whatsapp;
+      return html`
+        <button
+          onClick=${onClick}
+          className=${`w-full rounded-xl border p-3 text-left transition ${
+            selected
+              ? "border-highway-electric bg-blue-50/70 shadow-glowBlue"
+              : "border-highway-border bg-white hover:bg-slate-50"
+          }`}
+        >
+          <div className="flex items-center justify-between gap-2">
+            <div className="truncate text-sm font-semibold">${safe(item.contact?.name || "Sem nome")}</div>
+            <span className=${`rounded-full px-2 py-0.5 text-[10px] font-semibold ${isHot ? "bg-amber-100 text-amber-700" : "bg-slate-100 text-slate-600"}`}>
+              ${isHot ? "Perfil quente" : "Perfil normal"}
+            </span>
+          </div>
+          <div className="mt-1 flex items-center gap-1 text-xs text-slate-500 font-mono">
+            <span>${safe(item.contact?.phone || "-")}</span>
+            <span>•</span>
+            <span>${channel.label}</span>
+          </div>
+          <div className="mt-1 text-[11px] text-slate-500">
+            ${fmtDateTime(item.last_activity_at)} • ${safe(item.status || "-")}
+          </div>
+        </button>
+      `;
+    }
+
+    function MessageBubble({ msg }) {
+      const ui = CHANNEL_UI[msg.channel] || CHANNEL_UI.whatsapp;
+      const sent = msg.type === "enviada";
+      const source = sent ? (msg.manual ? "Equipe" : (msg.automatic ? "Automação" : "Saída")) : "Cliente";
+      const leftBorder = msg.channel === "instagram"
+        ? "border-l-4 border-violet-400"
+        : `border-l-4 ${ui.bubble}`;
+      return html`
+        <div className=${`max-w-[88%] rounded-2xl border border-highway-border px-3 py-2 text-sm ${leftBorder} ${
+          sent ? "ml-auto bg-white" : "bg-slate-50"
+        } ${msg.automatic ? "hatch" : ""}`}>
+          <div className="mb-1 flex items-center justify-between gap-3 text-[11px] text-slate-500">
+            <span className="inline-flex items-center gap-1">
+              <span className="inline-flex h-4 w-4 items-center justify-center rounded-full bg-slate-200 font-mono text-[9px]">${ui.glyph}</span>
+              <span>${source}</span>
+            </span>
+            <span>${fmtDateTime(msg.created_at)}</span>
+          </div>
+          <div className="whitespace-pre-wrap break-words text-slate-700">${safe(msg.text || "")}</div>
+        </div>
+      `;
+    }
+
+    function App() {
+      const [tab, setTab] = useState("conversas");
+      const [status, setStatus] = useState({});
+      const [conversations, setConversations] = useState([]);
+      const [conversationFilters, setConversationFilters] = useState({
+        search: "",
+        channel: "",
+        status: "",
+        hotOnly: false,
+        humanOnly: false,
+      });
+      const [selectedConversationId, setSelectedConversationId] = useState(null);
+      const [selectedConversation, setSelectedConversation] = useState(null);
+      const [messages, setMessages] = useState([]);
+      const [loadingMessages, setLoadingMessages] = useState(false);
+      const [sending, setSending] = useState(false);
+      const [channelOptions, setChannelOptions] = useState([]);
+      const [selectedChannel, setSelectedChannel] = useState("");
+      const [contacts, setContacts] = useState([]);
+      const [contactSearch, setContactSearch] = useState("");
+      const [contactModal, setContactModal] = useState({ open: false, data: null, id: null });
+      const [agenda, setAgenda] = useState({ slots: [], next: [] });
+      const [urgentModal, setUrgentModal] = useState({ open: false, item: null, snoozedUntil: 0 });
+      const [errorText, setErrorText] = useState("");
+
+      const humanQueue = useOpStore((s) => s.humanQueue);
+      const setHumanQueue = useOpStore((s) => s.setHumanQueue);
+      const setDraft = useOpStore((s) => s.setDraft);
+      const getDraft = useOpStore((s) => s.getDraft);
+      const clearDraft = useOpStore((s) => s.clearDraft);
+
+      const msgBoxRef = useRef(null);
+      const lastMessageSignature = useRef("");
+
+      const draftText = selectedConversationId ? getDraft(selectedConversationId) : "";
+
+      const metrics = useMemo(() => {
+        const openConvs = conversations.filter((c) => c.status === "open").length;
+        const pendingHuman = humanQueue.filter((h) => h.human_status === "human_pending").length;
+        const hotCount = conversations.filter((c) => c.is_hot).length;
+        return { openConvs, pendingHuman, hotCount };
+      }, [conversations, humanQueue]);
+
+      async function loadStatus() {
+        const data = await api("/dashboard/op/status");
+        setStatus(data.channels || {});
+      }
+
+      async function loadConversations(keepSelection = true) {
+        const q = new URLSearchParams();
+        q.set("limit", "80");
+        q.set("offset", "0");
+        if (conversationFilters.search) q.set("search", conversationFilters.search);
+        if (conversationFilters.channel) q.set("channel", conversationFilters.channel);
+        if (conversationFilters.status) q.set("status", conversationFilters.status);
+        q.set("hot_only", conversationFilters.hotOnly ? "true" : "false");
+        q.set("human_pending", conversationFilters.humanOnly ? "true" : "false");
+        const data = await api(`/dashboard/op/conversations?${q.toString()}`);
+        const items = data.items || [];
+        setConversations(items);
+        if (!keepSelection && items.length) {
+          setSelectedConversationId(items[0].id);
+        }
+        if (selectedConversationId && !items.find((i) => i.id === selectedConversationId)) {
+          setSelectedConversationId(items.length ? items[0].id : null);
+        }
+      }
+
+      function buildChannelOptions(detail) {
+        const options = [];
+        const seen = new Set();
+        const base = String(detail?.channel || "").toLowerCase();
+        const phone = String(detail?.contact?.phone || "");
+        const add = (channel, id, label) => {
+          const c = String(channel || "").toLowerCase().trim();
+          if (!c) return;
+          const key = `${c}|${id || ""}`;
+          if (seen.has(key)) return;
+          seen.add(key);
+          options.push({ channel: c, identityId: id || "", label });
+        };
+        if (base === "whatsapp" && normalizeWhatsapp(phone)) {
+          add("whatsapp", "", "WhatsApp");
+        }
+        for (const it of (detail.identities || [])) {
+          const c = String(it.channel || "").toLowerCase();
+          const v = String(it.value || "").trim();
+          if (!c || !v) continue;
+          if (c === "whatsapp" && !normalizeWhatsapp(v) && !normalizeWhatsapp(phone)) continue;
+          const label = c === "whatsapp" ? "WhatsApp" : `${CHANNEL_UI[c]?.label || c} (${v})`;
+          add(c, it.id || "", label);
+        }
+        if (!options.length && base) add(base, "", CHANNEL_UI[base]?.label || base);
+        return options;
+      }
+
+      async function loadConversationDetail(conversationId) {
+        if (!conversationId) return;
+        const detail = await api(`/dashboard/op/conversations/${conversationId}`);
+        setSelectedConversation(detail);
+        const opts = buildChannelOptions(detail);
+        setChannelOptions(opts);
+        if (opts.length) setSelectedChannel(`${opts[0].channel}|${opts[0].identityId || ""}`);
+      }
+
+      async function loadMessages(force = false) {
+        if (!selectedConversationId) return;
+        setLoadingMessages(true);
+        try {
+          let offset = 0;
+          const limit = 500;
+          const acc = [];
+          let total = 0;
+          while (offset < 5000) {
+            const data = await api(`/dashboard/op/conversations/${selectedConversationId}/messages?limit=${limit}&offset=${offset}`);
+            const chunk = data.items || [];
+            total = Number(data.total || 0);
+            acc.push(...chunk);
+            offset += limit;
+            if (offset >= total || chunk.length === 0) break;
+          }
+          const lastId = acc.length ? acc[acc.length - 1].id : "none";
+          const signature = `${total}|${lastId}`;
+          if (!force && signature === lastMessageSignature.current) return;
+          lastMessageSignature.current = signature;
+          setMessages(acc);
+          requestAnimationFrame(() => {
+            const el = msgBoxRef.current;
+            if (el) el.scrollTop = el.scrollHeight;
+          });
+        } finally {
+          setLoadingMessages(false);
+        }
+      }
+
+      async function loadHumanQueue() {
+        const data = await api("/dashboard/op/human-queue");
+        setHumanQueue(data.items || []);
+      }
+
+      async function loadUrgent() {
+        const data = await api("/dashboard/op/human-queue?for_modal=true");
+        const item = (data.items || [])[0] || null;
+        if (!item) {
+          setUrgentModal((s) => ({ ...s, open: false, item: null }));
+          return;
+        }
+        const now = Date.now();
+        setUrgentModal((s) => {
+          const same = s.item && s.item.conversation_id === item.conversation_id;
+          if (same && now < s.snoozedUntil) return s;
+          return { ...s, open: true, item };
+        });
+      }
+
+      async function loadContacts() {
+        const q = new URLSearchParams();
+        q.set("limit", "200");
+        q.set("offset", "0");
+        if (contactSearch) q.set("search", contactSearch);
+        const data = await api(`/dashboard/op/contacts?${q.toString()}`);
+        setContacts(data.items || []);
+      }
+
+      async function openContact(contactId) {
+        const data = await api(`/dashboard/op/contacts/${contactId}`);
+        setContactModal({ open: true, data, id: contactId });
+      }
+
+      async function startConversationFromContact() {
+        if (!contactModal.id) return;
+        const payload = await api(`/dashboard/op/contacts/${contactModal.id}/start-conversation?channel=whatsapp`, {
+          method: "POST",
+        });
+        if (!payload.conversation_id) return;
+        setContactModal({ open: false, data: null, id: null });
+        setTab("conversas");
+        setSelectedConversationId(payload.conversation_id);
+      }
+
+      async function loadAgenda() {
+        const data = await api("/dashboard/op/appointments?include_next=true");
+        setAgenda({ slots: data.slots || [], next: data.next_appointments || [] });
+      }
+
+      async function toggleChatbot() {
+        if (!selectedConversationId || !selectedConversation) return;
+        const enabled = !(selectedConversation.chatbot_enabled === true);
+        const data = await api(`/dashboard/op/conversations/${selectedConversationId}/chatbot/toggle`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ enabled }),
+        });
+        setSelectedConversation((s) => ({ ...(s || {}), chatbot_enabled: !!data.chatbot_enabled }));
+      }
+
+      async function sendMessage() {
+        setErrorText("");
+        if (!selectedConversationId || sending) return;
+        const text = safe(getDraft(selectedConversationId)).trim();
+        if (!text) {
+          setErrorText("Digite uma mensagem antes de enviar.");
+          return;
+        }
+        const [channel, identityId] = safe(selectedChannel).split("|");
+        if (!channel) {
+          setErrorText("Este canal ainda não está disponível para envio.");
+          return;
+        }
+        const payload = { channel, text };
+        if (identityId) payload.contact_identity_id = identityId;
+        setSending(true);
+        try {
+          await api(`/dashboard/op/conversations/${selectedConversationId}/send`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+          });
+          clearDraft(selectedConversationId);
+          await loadConversationDetail(selectedConversationId);
+          await loadConversations(true);
+          await loadMessages(true);
+        } catch (err) {
+          setErrorText(err.message || "Não foi possível enviar por este canal agora.");
+        } finally {
+          setSending(false);
+        }
+      }
+
+      async function humanAction(conversationId, action) {
+        await api(`/dashboard/op/conversations/${conversationId}/human/${action}`, { method: "POST" });
+        if (selectedConversationId === conversationId) {
+          await loadConversationDetail(conversationId);
+          await loadMessages(true);
+        }
+        await loadConversations(true);
+        await loadHumanQueue();
+        await loadUrgent();
+      }
+
+      function renderCalendar() {
+        const slots = agenda.slots || [];
+        const byDayHour = new Map();
+        const days = [];
+        const hours = [];
+        for (const slot of slots) {
+          const d = new Date(slot.start_time);
+          const dayKey = safe(slot.start_time).slice(0, 10);
+          const dayLabel = new Intl.DateTimeFormat("pt-BR", {
+            weekday: "short",
+            day: "2-digit",
+            month: "2-digit",
+            timeZone: "America/Sao_Paulo",
+          }).format(d);
+          const hour = d.toLocaleString("pt-BR", { hour: "2-digit", hour12: false, timeZone: "America/Sao_Paulo" });
+          if (!days.find((x) => x.key === dayKey)) days.push({ key: dayKey, label: dayLabel });
+          if (!hours.includes(hour)) hours.push(hour);
+          byDayHour.set(`${dayKey}|${hour}`, slot.status);
+        }
+        days.sort((a, b) => a.key.localeCompare(b.key));
+        hours.sort((a, b) => Number(a) - Number(b));
+        return html`
+          <div className="overflow-auto thin-scroll">
+            <table className="w-full min-w-[760px] border-collapse text-xs">
+              <thead>
+                <tr>
+                  <th className="border border-highway-border bg-slate-50 px-2 py-2 text-left">Horário</th>
+                  ${days.map((d) => html`<th key=${d.key} className="border border-highway-border bg-slate-50 px-2 py-2 text-center">${d.label}</th>`)}
+                </tr>
+              </thead>
+              <tbody>
+                ${hours.map((h) => html`
+                  <tr key=${h}>
+                    <td className="border border-highway-border px-2 py-2 font-mono">${h}:00</td>
+                    ${days.map((d) => {
+                      const st = byDayHour.get(`${d.key}|${h}`) || "free";
+                      const cls = st === "reserved" ? "bg-rose-100 text-rose-700" : "bg-emerald-100 text-emerald-700";
+                      return html`<td key=${`${d.key}_${h}`} className=${`border border-highway-border px-2 py-2 text-center ${cls}`}>${st === "reserved" ? "Reservado" : "Livre"}</td>`;
+                    })}
+                  </tr>
+                `)}
+              </tbody>
+            </table>
+          </div>
+        `;
+      }
+
+      useEffect(() => {
+        (async () => {
+          await Promise.all([loadStatus(), loadConversations(false), loadHumanQueue(), loadContacts(), loadAgenda(), loadUrgent()]);
+        })().catch((err) => setErrorText(err.message || "Falha ao carregar o painel."));
+      }, []);
+
+      useEffect(() => {
+        if (!selectedConversationId) return;
+        loadConversationDetail(selectedConversationId).catch((err) => setErrorText(err.message || "Falha ao abrir conversa."));
+        loadMessages(true).catch((err) => setErrorText(err.message || "Falha ao carregar mensagens."));
+      }, [selectedConversationId]);
+
+      useEffect(() => {
+        const t = setTimeout(() => {
+          loadConversations(true).catch(() => {});
+        }, 260);
+        return () => clearTimeout(t);
+      }, [conversationFilters.search, conversationFilters.channel, conversationFilters.status, conversationFilters.hotOnly, conversationFilters.humanOnly]);
+
+      useEffect(() => {
+        const t = setTimeout(() => {
+          loadContacts().catch(() => {});
+        }, 260);
+        return () => clearTimeout(t);
+      }, [contactSearch]);
+
+      useEffect(() => {
+        const id1 = setInterval(() => loadStatus().catch(() => {}), 45000);
+        const id2 = setInterval(() => loadConversations(true).catch(() => {}), 12000);
+        const id3 = setInterval(() => loadHumanQueue().catch(() => {}), 15000);
+        const id4 = setInterval(() => loadUrgent().catch(() => {}), 8000);
+        const id5 = setInterval(() => {
+          if (selectedConversationId) {
+            loadConversationDetail(selectedConversationId).catch(() => {});
+            loadMessages(false).catch(() => {});
+          }
+        }, 6000);
+        return () => [id1,id2,id3,id4,id5].forEach(clearInterval);
+      }, [selectedConversationId]);
+
+      const emptyState = html`
+        <div className="glass-card flex h-full min-h-[420px] flex-col items-center justify-center border-dashed p-8 text-center">
+          <div className="mb-3 text-4xl">🛰️</div>
+          <h3 className="text-lg font-semibold text-slate-700">Cockpit operacional pronto</h3>
+          <p className="mt-1 max-w-md text-sm text-slate-500">
+            Selecione uma conversa para iniciar. O painel atualiza sozinho em tempo real.
+          </p>
+          <div className="mt-6 grid grid-cols-3 gap-3">
+            <div className="rounded-xl border border-highway-border bg-white px-4 py-3">
+              <div className="text-xs text-slate-500">Abertas</div>
+              <div className="text-xl font-semibold">${metrics.openConvs}</div>
+            </div>
+            <div className="rounded-xl border border-highway-border bg-white px-4 py-3">
+              <div className="text-xs text-slate-500">Humano pendente</div>
+              <div className="text-xl font-semibold">${metrics.pendingHuman}</div>
+            </div>
+            <div className="rounded-xl border border-highway-border bg-white px-4 py-3">
+              <div className="text-xs text-slate-500">Perfis quentes</div>
+              <div className="text-xl font-semibold">${metrics.hotCount}</div>
+            </div>
+          </div>
+        </div>
+      `;
+
+      return html`
+        <div className="h-screen overflow-hidden bg-highway-bg p-3">
+          <div className="glass-card flex h-full flex-col overflow-hidden p-3">
+            <header className="mb-3 flex flex-wrap items-center justify-between gap-2">
+              <h1 className="text-lg font-semibold tracking-tight">Central OP de Mensagens <span className="text-xs font-medium text-highway-electric">Highway Edition</span></h1>
+              <div className="flex flex-wrap items-center gap-2">
+                <${StatusOrb} channel="whatsapp" label="WhatsApp" status=${status.whatsapp} />
+                <${StatusOrb} channel="instagram" label="Instagram" status=${status.instagram} />
+                <${StatusOrb} channel="facebook" label="Facebook" status=${status.facebook} />
+                <${StatusOrb} channel="tiktok" label="TikTok" status=${status.tiktok} />
+              </div>
+            </header>
+
+            <nav className="mb-3 inline-flex w-fit rounded-xl border border-highway-border bg-white p-1">
+              ${["conversas", "clientes", "agenda", "humano"].map((name) => html`
+                <button
+                  key=${name}
+                  onClick=${() => setTab(name)}
+                  className=${`rounded-lg px-4 py-2 text-sm font-medium transition ${
+                    tab === name ? "bg-highway-electric text-white shadow-glowBlue" : "text-slate-600 hover:bg-slate-100"
+                  }`}
+                >
+                  ${name === "conversas" ? "Conversas" : name === "clientes" ? "Banco de Dados" : name === "agenda" ? "Agenda" : "Atendimento humano"}
+                </button>
+              `)}
+            </nav>
+
+            <div className="min-h-0 flex-1 overflow-hidden">
+              <${AnimatePresence} mode="wait">
+                ${tab === "conversas" && html`
+                  <${motion.section} key="tab_conversas" initial=${{ opacity: 0, y: 8 }} animate=${{ opacity: 1, y: 0 }} exit=${{ opacity: 0, y: -8 }} transition=${{ duration: .18 }} className="grid h-full min-h-0 grid-cols-[340px_minmax(0,1fr)] gap-3">
+                    <aside className="glass-card flex min-h-0 flex-col p-3">
+                      <div className="mb-2 text-sm font-semibold">Conversas (${conversations.length})</div>
+                      <div className="mb-2 space-y-2">
+                        <input
+                          value=${conversationFilters.search}
+                          onInput=${(e) => setConversationFilters((s) => ({ ...s, search: e.target.value }))}
+                          className="w-full rounded-lg border border-highway-border bg-white px-3 py-2 text-sm outline-none focus:border-highway-electric"
+                          placeholder="Buscar por nome, telefone ou ID"
+                        />
+                        <div className="grid grid-cols-2 gap-2">
+                          <select
+                            value=${conversationFilters.channel}
+                            onChange=${(e) => setConversationFilters((s) => ({ ...s, channel: e.target.value }))}
+                            className="rounded-lg border border-highway-border bg-white px-2 py-2 text-xs"
+                          >
+                            <option value="">Todos canais</option>
+                            <option value="whatsapp">WhatsApp</option>
+                            <option value="instagram">Instagram</option>
+                            <option value="facebook">Facebook</option>
+                            <option value="tiktok">TikTok</option>
+                          </select>
+                          <select
+                            value=${conversationFilters.status}
+                            onChange=${(e) => setConversationFilters((s) => ({ ...s, status: e.target.value }))}
+                            className="rounded-lg border border-highway-border bg-white px-2 py-2 text-xs"
+                          >
+                            <option value="">Abertas e fechadas</option>
+                            <option value="open">Abertas</option>
+                            <option value="closed">Fechadas</option>
+                          </select>
+                        </div>
+                        <div className="flex items-center gap-3 text-xs text-slate-500">
+                          <label className="inline-flex items-center gap-1">
+                            <input type="checkbox" checked=${conversationFilters.hotOnly} onChange=${(e) => setConversationFilters((s) => ({ ...s, hotOnly: !!e.target.checked }))}/>
+                            Perfil quente
+                          </label>
+                          <label className="inline-flex items-center gap-1">
+                            <input type="checkbox" checked=${conversationFilters.humanOnly} onChange=${(e) => setConversationFilters((s) => ({ ...s, humanOnly: !!e.target.checked }))}/>
+                            Humano
+                          </label>
+                        </div>
+                      </div>
+                      <div className="thin-scroll min-h-0 flex-1 space-y-2 overflow-y-auto pr-1">
+                        ${conversations.map((item) => html`
+                          <${ConversationRow}
+                            key=${item.id}
+                            item=${item}
+                            selected=${item.id === selectedConversationId}
+                            onClick=${() => setSelectedConversationId(item.id)}
+                          />
+                        `)}
+                      </div>
+                    </aside>
+
+                    <section className="h-full min-h-0">
+                      ${!selectedConversationId
+                        ? emptyState
+                        : html`
+                          <div className="glass-card flex h-full min-h-0 flex-col p-3">
+                            <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                              <div>
+                                <div className="text-sm font-semibold">${safe(selectedConversation?.contact?.name || "Sem nome")}</div>
+                                <div className="font-mono text-xs text-slate-500">${safe(selectedConversation?.contact?.phone || "-")} • ${CHANNEL_UI[selectedConversation?.channel]?.label || "-"}</div>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <span className="text-xs text-slate-500">Chatbot</span>
+                                <${ToggleSwitch}
+                                  checked=${!!selectedConversation?.chatbot_enabled}
+                                  disabled=${false}
+                                  onClick=${toggleChatbot}
+                                />
+                              </div>
+                            </div>
+
+                            <div className="mb-2 rounded-xl border border-highway-border bg-white p-2">
+                              <div className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-slate-500">Informações rápidas</div>
+                              <div className="flex flex-wrap gap-1">
+                                ${(selectedConversation?.pillar_memories || []).slice(0, 8).map((m) => html`
+                                  <span key=${m.key + m.value} className="rounded-full border border-highway-border bg-slate-50 px-2 py-0.5 text-[11px] text-slate-600">${safe(m.label || m.key)}: ${safe(m.value)}</span>
+                                `)}
+                                ${!(selectedConversation?.pillar_memories || []).length && html`<span className="text-xs text-slate-400">Sem memórias essenciais no momento.</span>`}
+                              </div>
+                              ${(selectedConversation?.pillar_memories || []).length > 8 && html`
+                                <details className="mt-2 text-xs text-slate-500">
+                                  <summary className="cursor-pointer">Ver mais detalhes</summary>
+                                  <div className="mt-2 grid grid-cols-2 gap-1">
+                                    ${(selectedConversation?.pillar_memories || []).slice(8).map((m) => html`
+                                      <div key=${"more_" + m.key + m.value} className="rounded border border-highway-border bg-white px-2 py-1">${safe(m.label || m.key)}: ${safe(m.value)}</div>
+                                    `)}
+                                  </div>
+                                </details>
+                              `}
+                            </div>
+
+                            ${selectedConversation?.human_status === "human_pending" && html`
+                              <div className="mb-2 flex items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-2 py-2 text-xs">
+                                <span className="font-semibold text-amber-700">Atendimento humano solicitado</span>
+                                <button onClick=${() => humanAction(selectedConversationId, "accept")} className="inline-flex items-center gap-1 rounded-lg border border-emerald-200 bg-gradient-to-r from-emerald-400 to-emerald-500 px-2 py-1 font-medium text-white">✓ Aceitar</button>
+                                <button onClick=${() => humanAction(selectedConversationId, "ignore")} className="inline-flex items-center gap-1 rounded-lg border border-rose-200 bg-gradient-to-r from-rose-400 to-rose-500 px-2 py-1 font-medium text-white">✕ Ignorar</button>
+                              </div>
+                            `}
+
+                            <div ref=${msgBoxRef} className="thin-scroll min-h-0 flex-1 space-y-2 overflow-y-auto rounded-xl border border-highway-border bg-white p-2 h-[clamp(420px,58vh,760px)]">
+                              ${loadingMessages ? html`<${SkeletonMessages} />` : messages.map((m) => html`<${MessageBubble} key=${m.id} msg=${m} />`)}
+                            </div>
+
+                            <div className="mt-2 rounded-xl border border-highway-border bg-white p-2">
+                              <div className="mb-2 flex flex-wrap items-center gap-2">
+                                <select value=${selectedChannel} onChange=${(e) => setSelectedChannel(e.target.value)} className="rounded-lg border border-highway-border px-2 py-2 text-xs">
+                                  ${channelOptions.map((opt) => html`<option key=${opt.channel + opt.identityId} value=${`${opt.channel}|${opt.identityId}`}>${opt.label}</option>`)}
+                                  ${!channelOptions.length && html`<option value="">Canal indisponível</option>`}
+                                </select>
+                                <span className="text-xs text-slate-500">Atualização automática ativa</span>
+                              </div>
+                              <textarea
+                                value=${draftText}
+                                onInput=${(e) => selectedConversationId && setDraft(selectedConversationId, e.target.value)}
+                                onKeyDown=${(e) => {
+                                  if (e.key === "Enter" && !e.shiftKey) {
+                                    e.preventDefault();
+                                    sendMessage();
+                                  }
+                                }}
+                                className="h-16 w-full resize-none rounded-lg border border-highway-border px-3 py-2 text-sm outline-none focus:border-highway-electric"
+                                placeholder="Digite aqui. Enter envia, Shift+Enter quebra linha."
+                              ></textarea>
+                              <div className="mt-2 flex items-center justify-between gap-2">
+                                <button
+                                  disabled=${sending}
+                                  onClick=${sendMessage}
+                                  className="rounded-lg bg-gradient-to-r from-highway-electric to-blue-500 px-4 py-2 text-sm font-medium text-white shadow-glowBlue disabled:cursor-not-allowed disabled:opacity-60"
+                                >
+                                  ${sending ? "Enviando..." : "Enviar"}
+                                </button>
+                                ${errorText && html`<span className="text-xs text-rose-600">${errorText}</span>`}
+                              </div>
+                            </div>
+                          </div>
+                        `}
+                    </section>
+                  </${motion.section}>
+                `}
+
+                ${tab === "clientes" && html`
+                  <${motion.section} key="tab_clientes" initial=${{ opacity: 0, x: 12 }} animate=${{ opacity: 1, x: 0 }} exit=${{ opacity: 0, x: -12 }} transition=${{ duration: .18 }} className="glass-card h-full min-h-0 p-3">
+                    <div className="mb-2 flex items-center justify-between gap-2">
+                      <h2 className="text-sm font-semibold">Banco de Dados (${contacts.length})</h2>
+                      <input value=${contactSearch} onInput=${(e) => setContactSearch(e.target.value)} className="w-80 max-w-full rounded-lg border border-highway-border px-3 py-2 text-sm" placeholder="Pesquisar cliente por nome, telefone ou canal"/>
+                    </div>
+                    <div className="thin-scroll h-[calc(100%-48px)] overflow-auto rounded-xl border border-highway-border">
+                      <table className="w-full text-sm">
+                        <thead className="sticky top-0 bg-slate-50">
+                          <tr className="text-left text-xs text-slate-500">
+                            <th className="px-3 py-2">Nome</th>
+                            <th className="px-3 py-2">Telefone</th>
+                            <th className="px-3 py-2">Agendado</th>
+                            <th className="px-3 py-2">Canal</th>
+                            <th className="px-3 py-2">Perfil</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          ${contacts.map((c) => html`
+                            <tr key=${c.id} className="cursor-pointer border-t border-highway-border hover:bg-slate-50" onClick=${() => openContact(c.id)}>
+                              <td className="px-3 py-2">${safe(c.name || "Sem nome")}</td>
+                              <td className="px-3 py-2 font-mono text-xs">${safe(c.phone || "-")}</td>
+                              <td className="px-3 py-2">${c.scheduled ? "Sim" : "Não"}</td>
+                              <td className="px-3 py-2">${safe(CHANNEL_UI[c.main_channel]?.label || c.main_channel || "-")}</td>
+                              <td className="px-3 py-2">${c.is_hot ? "Quente" : "Normal"}</td>
+                            </tr>
+                          `)}
+                        </tbody>
+                      </table>
+                    </div>
+                  </${motion.section}>
+                `}
+
+                ${tab === "agenda" && html`
+                  <${motion.section} key="tab_agenda" initial=${{ opacity: 0, x: 12 }} animate=${{ opacity: 1, x: 0 }} exit=${{ opacity: 0, x: -12 }} transition=${{ duration: .18 }} className="grid h-full min-h-0 grid-cols-[minmax(0,1fr)_320px] gap-3">
+                    <div className="glass-card min-h-0 p-3">${renderCalendar()}</div>
+                    <aside className="glass-card thin-scroll min-h-0 overflow-y-auto p-3">
+                      <h3 className="text-sm font-semibold">Próximos 5 agendamentos</h3>
+                      <div className="mt-2 space-y-2">
+                        ${(agenda.next || []).length
+                          ? (agenda.next || []).map((a) => html`
+                              <div key=${a.id} className="rounded-lg border border-highway-border bg-white px-2 py-2 text-xs">
+                                <div className="font-semibold">${safe(a.customer_name || "Sem nome")}</div>
+                                <div className="font-mono text-[11px] text-slate-500">${safe(a.customer_phone || "-")}</div>
+                                <div className="mt-1 text-slate-500">${fmtDateTime(a.start_time)} • ${safe(a.status || "-")}</div>
+                              </div>
+                            `)
+                          : html`<div className="text-xs text-slate-500">Não há agendamentos próximos.</div>`}
+                      </div>
+                    </aside>
+                  </${motion.section}>
+                `}
+
+                ${tab === "humano" && html`
+                  <${motion.section} key="tab_humano" initial=${{ opacity: 0, x: 12 }} animate=${{ opacity: 1, x: 0 }} exit=${{ opacity: 0, x: -12 }} transition=${{ duration: .18 }} className="glass-card thin-scroll h-full min-h-0 overflow-y-auto p-3">
+                    <div className="mb-2 flex items-center justify-between">
+                      <h2 className="text-sm font-semibold">Fila de atendimento humano</h2>
+                      <span className="text-xs text-slate-500">Ordem por solicitação</span>
+                    </div>
+                    <div className="space-y-2">
+                      ${humanQueue.map((q) => html`
+                        <div key=${q.conversation_id} className="rounded-xl border border-highway-border bg-white p-3">
+                          <div className="flex items-center justify-between gap-2">
+                            <div>
+                              <div className="text-sm font-semibold">${safe(q.name || "Sem nome")}</div>
+                              <div className="font-mono text-xs text-slate-500">${safe(q.phone || "-")} • ${safe(CHANNEL_UI[q.channel]?.label || q.channel || "-")}</div>
+                            </div>
+                            <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-700">${safe(q.human_status || "-")}</span>
+                          </div>
+                          <div className="mt-2 text-xs text-slate-600">Motivo: ${safe(q.human_reason || "Cliente pediu ajuda")}</div>
+                          <div className="text-xs text-slate-500">Solicitado em: ${fmtDateTime(q.human_requested_at)}</div>
+                          <div className="text-xs text-slate-500">Caminho no menu: ${safe(q.menu_path_summary || "Sem trilha")}</div>
+                          <div className="mt-2 flex items-center gap-2">
+                            <button onClick=${() => humanAction(q.conversation_id, "accept")} className="inline-flex items-center gap-1 rounded-lg border border-emerald-200 bg-gradient-to-r from-emerald-400 to-emerald-500 px-2 py-1 text-xs font-medium text-white">✓ Aceitar</button>
+                            <button onClick=${() => humanAction(q.conversation_id, "ignore")} className="inline-flex items-center gap-1 rounded-lg border border-rose-200 bg-gradient-to-r from-rose-400 to-rose-500 px-2 py-1 text-xs font-medium text-white">✕ Ignorar</button>
+                            <button onClick=${() => { setTab("conversas"); setSelectedConversationId(q.conversation_id); }} className="rounded-lg border border-highway-border px-2 py-1 text-xs text-slate-600">Ver conversa</button>
+                          </div>
+                        </div>
+                      `)}
+                      ${!humanQueue.length && html`<div className="text-xs text-slate-500">Sem solicitações no momento.</div>`}
+                    </div>
+                  </${motion.section}>
+                `}
+              </${AnimatePresence}>
+            </div>
+          </div>
+        </div>
+
+        ${contactModal.open && html`
+          <div className="fixed inset-0 z-40 flex items-center justify-center bg-slate-900/45 p-3">
+            <div className="glass-card thin-scroll max-h-[94vh] w-[1100px] max-w-[98vw] overflow-y-auto p-4">
+              <div className="mb-3 flex items-center justify-between">
+                <h3 className="text-base font-semibold">Perfil completo do cliente</h3>
+                <div className="flex items-center gap-2">
+                  <button onClick=${startConversationFromContact} className="rounded-lg bg-gradient-to-r from-highway-electric to-blue-500 px-3 py-2 text-xs font-semibold text-white">Iniciar conversa no WhatsApp</button>
+                  <button onClick=${() => setContactModal({ open: false, data: null, id: null })} className="rounded-lg border border-highway-border px-3 py-2 text-xs">Fechar</button>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-2 text-sm">
+                <div className="rounded-xl border border-highway-border bg-white p-3">
+                  <div className="mb-1 text-xs uppercase text-slate-500">Dados principais</div>
+                  <div>Nome: <b>${safe(contactModal.data?.main?.name || "Sem nome")}</b></div>
+                  <div>Telefone: <span className="font-mono text-xs">${safe(contactModal.data?.main?.phone || "-")}</span></div>
+                  <div>Status cliente: ${safe(contactModal.data?.main?.customer_status || "-")}</div>
+                  <div>Agendado: ${contactModal.data?.main?.scheduled ? "Sim" : "Não"}</div>
+                  <div>Perfil quente: ${contactModal.data?.main?.is_hot ? "Sim" : "Não"}</div>
+                  <div>Última interação: ${fmtDateTime(contactModal.data?.main?.last_interaction_at)}</div>
+                </div>
+                <div className="rounded-xl border border-highway-border bg-white p-3">
+                  <div className="mb-1 text-xs uppercase text-slate-500">Dados FC VIP (API)</div>
+                  ${contactModal.data?.fcvip_api?.status === "completed"
+                    ? html`
+                        <div>Cliente FC VIP: ${contactModal.data?.fcvip_api?.customer_exists ? "Sim" : "Não"}</div>
+                        <div>Status FC VIP: ${safe(contactModal.data?.fcvip_api?.customer_status || "-")}</div>
+                      `
+                    : html`<div className="text-slate-500">${safe(contactModal.data?.fcvip_api?.message || "Consulta indisponível no momento.")}</div>`}
+                </div>
+                <div className="rounded-xl border border-highway-border bg-white p-3">
+                  <div className="mb-1 text-xs uppercase text-slate-500">Canais conectados</div>
+                  ${(contactModal.data?.channels || []).map((ch) => html`<div key=${ch.channel + ch.value}>${safe(CHANNEL_UI[ch.channel]?.label || ch.channel)}: ${safe(ch.value || "-")}</div>`)}
+                  ${!(contactModal.data?.channels || []).length && html`<div className="text-slate-500">Sem canais extras</div>`}
+                </div>
+                <div className="rounded-xl border border-highway-border bg-white p-3">
+                  <div className="mb-1 text-xs uppercase text-slate-500">Memórias importantes</div>
+                  ${(contactModal.data?.memories || []).slice(0, 20).map((m) => html`<div key=${m.key + m.value}>${safe(m.label || m.key)}: ${safe(m.value || "-")}</div>`)}
+                  ${!(contactModal.data?.memories || []).length && html`<div className="text-slate-500">Sem memórias</div>`}
+                </div>
+              </div>
+            </div>
+          </div>
+        `}
+
+        ${urgentModal.open && urgentModal.item && html`
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-rose-900/35 p-3">
+            <div className="w-[760px] max-w-[95vw] rounded-2xl border-2 border-rose-400 bg-white p-4 shadow-2xl">
+              <h3 className="text-base font-bold text-rose-700">ATENDIMENTO HUMANO SOLICITADO</h3>
+              <div className="mt-2 text-sm text-slate-700">
+                <div><b>Cliente:</b> ${safe(urgentModal.item.name || "-")}</div>
+                <div><b>Telefone:</b> <span className="font-mono text-xs">${safe(urgentModal.item.phone || "-")}</span></div>
+                <div><b>Canal:</b> ${safe(CHANNEL_UI[urgentModal.item.channel]?.label || urgentModal.item.channel || "-")}</div>
+                <div><b>Motivo:</b> ${safe(urgentModal.item.human_reason || "Cliente pediu ajuda")}</div>
+                <div><b>Caminho no menu:</b> ${safe(urgentModal.item.menu_path_summary || "Sem trilha")}</div>
+              </div>
+              <div className="mt-3 flex flex-wrap items-center gap-2">
+                <button onClick=${() => humanAction(urgentModal.item.conversation_id, "accept")} className="inline-flex items-center gap-1 rounded-lg border border-emerald-200 bg-gradient-to-r from-emerald-400 to-emerald-500 px-3 py-2 text-xs font-semibold text-white">✓ Aceitar solicitação</button>
+                <button onClick=${() => humanAction(urgentModal.item.conversation_id, "ignore")} className="inline-flex items-center gap-1 rounded-lg border border-rose-200 bg-gradient-to-r from-rose-400 to-rose-500 px-3 py-2 text-xs font-semibold text-white">✕ Ignorar</button>
+                <button onClick=${() => setUrgentModal((s) => ({ ...s, open: false, snoozedUntil: Date.now() + 120000 }))} className="rounded-lg border border-highway-border px-3 py-2 text-xs">Fechar por 2 min</button>
+              </div>
+            </div>
+          </div>
+        `}
+      `;
+    }
+
+    createRoot(document.getElementById("root")).render(html`<${App} />`);
+  </script>
+</body>
+</html>
