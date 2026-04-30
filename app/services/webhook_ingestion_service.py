@@ -4,6 +4,7 @@ from typing import Any
 from sqlalchemy.orm import Session
 
 from app.models.audit_log import AuditLog
+from app.models.contact import Contact
 from app.models.conversation import Conversation
 from app.models.message import Message
 from app.services.customer_identity_service import CustomerIdentityService
@@ -173,6 +174,21 @@ class WebhookIngestionService:
             .order_by(Conversation.updated_at.desc())
             .first()
         )
+        if conversation is None:
+            contact = db.get(Contact, contact_id)
+            contact_phone = str((contact.phone if contact else "") or "").strip()
+            if contact_phone:
+                conversation = (
+                    db.query(Conversation)
+                    .join(Contact, Contact.id == Conversation.contact_id)
+                    .filter(
+                        Conversation.platform == platform,
+                        Conversation.status == "open",
+                        Contact.phone == contact_phone,
+                    )
+                    .order_by(Conversation.updated_at.desc())
+                    .first()
+                )
         if conversation is None:
             conversation = Conversation(
                 contact_id=contact_id,

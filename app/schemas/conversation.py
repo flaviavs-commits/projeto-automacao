@@ -20,6 +20,12 @@ class ConversationUpdate(BaseModel):
     needs_human: bool | None = None
     human_reason: str | None = None
     human_requested_at: datetime | None = None
+    human_status: str | None = None
+    human_accepted_at: datetime | None = None
+    human_accepted_by: str | None = None
+    human_ignored_at: datetime | None = None
+    human_ignored_by: str | None = None
+    chatbot_enabled: bool | None = None
 
 
 class ConversationRead(BaseModel):
@@ -35,7 +41,13 @@ class ConversationRead(BaseModel):
     last_inbound_message_at: datetime | None
     menu_state: str | None
     needs_human: bool
+    human_status: str
     human_reason: str | None
     human_requested_at: datetime | None
+    human_accepted_at: datetime | None
+    human_accepted_by: str | None
+    human_ignored_at: datetime | None
+    human_ignored_by: str | None
+    chatbot_enabled: bool
     created_at: datetime
     updated_at: datetime

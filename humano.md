@@ -999,3 +999,52 @@ Correcao feita:
 Apos deploy:
 - API/worker em `SUCCESS`;
 - 2 contatos com nomes de teste tiveram `name` limpo (`null`) para efeito imediato no atendimento.
+
+## Registro de task - 2026-04-30 (Central OP de Mensagens)
+
+Task executada: criacao da Central OP com foco em seguranca operacional e sem quebrar os fluxos atuais.
+
+O que foi entregue:
+- painel OP com abas operacionais (Conversas, Banco de Dados, Agenda) em `GET /dashboard/op`.
+- novas APIs de operacao para:
+  - listar/abrir conversas e mensagens;
+  - envio manual por backend;
+  - fila de atendimento humano (aceitar/ignorar);
+  - ligar/desligar chatbot por conversa;
+  - clientes (lista e detalhe);
+  - agenda (lista, criar e atualizar);
+  - status operacional de canais.
+- compatibilidade preservada para endpoints antigos:
+  - `GET /dashboard/op/state`
+  - `POST /dashboard/op/send`
+
+Seguranca aplicada:
+- autenticacao opcional no painel por variavel de ambiente.
+- nenhum token/chave exposto no HTML.
+- acoes humanas e envio manual geram `AuditLog`.
+- envio manual sempre passa por service backend (sem chamada direta do front para gateway).
+
+Banco e worker:
+- conversa ganhou campos de controle humano e chatbot.
+- agenda ganhou tabela propria (`appointments`).
+- worker passou a respeitar `chatbot_enabled=false` (sem auto resposta e sem follow-up nessa conversa).
+
+Teste e validacao:
+- TDD criado com 33 testes da Central OP.
+- resultado final da suite da task: 33/33 passando.
+- `compileall` passou.
+- `pytest` nao disponivel nesta venv (modulo ausente).
+- `qa_tudo.py --no-dashboard --no-pause` final: `PASS=12 WARN=3 FAIL=0`.
+
+## Ajustes de usabilidade - 2026-04-30
+
+Foi feito um segundo ajuste focado em operacao do painel:
+- envio manual volta a abrir conversa fechada automaticamente;
+- cliente agora tem acao para iniciar/reabrir conversa no WhatsApp;
+- mensagens e listas atualizam automaticamente (sem depender de botao de atualizar);
+- fila humana permanece em ordem de solicitacao;
+- modal urgente mostra trilha simplificada do menu (em vez de ultima mensagem numerica);
+- aceitar solicitacao humana desliga chatbot da conversa;
+- botoes aceitar/ignorar so aparecem quando existe solicitacao pendente;
+- aba Banco de Dados virou tela unica com busca e modal de detalhe;
+- agenda passou para formato calendario semanal, com horario em padrao brasileiro.

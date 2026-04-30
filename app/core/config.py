@@ -116,6 +116,9 @@ class Settings(BaseSettings):
     fcvip_partner_api_timeout_seconds: float = Field(default=12.0, alias="FCVIP_PARTNER_API_TIMEOUT_SECONDS")
     fcvip_partner_api_page_size: int = Field(default=50, alias="FCVIP_PARTNER_API_PAGE_SIZE")
     fcvip_partner_api_leads_max_pages: int = Field(default=3, alias="FCVIP_PARTNER_API_LEADS_MAX_PAGES")
+    op_dashboard_auth_enabled: bool = Field(default=False, alias="OP_DASHBOARD_AUTH_ENABLED")
+    op_dashboard_username: str = Field(default="", alias="OP_DASHBOARD_USERNAME")
+    op_dashboard_password_hash: str = Field(default="", alias="OP_DASHBOARD_PASSWORD_HASH")
 
     @property
     def meta_ready(self) -> bool:

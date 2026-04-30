@@ -1,4 +1,5 @@
 from app.models.audit_log import AuditLog
+from app.models.appointment import Appointment
 from app.models.contact import Contact
 from app.models.contact_identity import ContactIdentity
 from app.models.contact_memory import ContactMemory
@@ -10,6 +11,7 @@ from app.models.post import Post
 
 __all__ = [
     "AuditLog",
+    "Appointment",
     "Contact",
     "ContactIdentity",
     "ContactMemory",

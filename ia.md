@@ -1535,3 +1535,57 @@ Operacao:
 Validacao:
 - `python -m unittest discover -s tests -p "test_*.py" -v` -> OK (99 testes);
 - `qa_tudo.py --no-dashboard --no-pause` -> PASS=12 WARN=3 FAIL=0.
+
+## Registro de task - 2026-04-30 (Central OP de Mensagens - FC VIP)
+
+Task executada: auditoria + implementacao da Central OP com TDD, mantendo compatibilidade de dashboard legado, webhook, worker e envio WhatsApp.
+
+Auditoria confirmada no codigo:
+- dashboard existente em `app/api/routes/dashboard.py` com rotas antigas `/dashboard`, `/dashboard/op/state`, `/dashboard/op/send`.
+- `conversations` ja tinha: `menu_state`, `needs_human`, `human_reason`, `human_requested_at`.
+- nao havia: auth OP por env, `chatbot_enabled`, `human_status` completo, tabela de agenda.
+
+Implementacao (Open/Closed):
+- novos services:
+  - `dashboard_op_service.py`
+  - `manual_message_service.py`
+  - `human_queue_service.py`
+  - `conversation_chatbot_control_service.py`
+  - `lead_temperature_service.py`
+  - `schedule_service.py`
+- novas rotas OP + compatibilidade legado preservada.
+- auth opcional no painel OP por:
+  - `OP_DASHBOARD_AUTH_ENABLED`
+  - `OP_DASHBOARD_USERNAME`
+  - `OP_DASHBOARD_PASSWORD_HASH`
+- migration criada:
+  - `20260430_0005_op_dashboard_human_queue_and_appointments.py`
+  - inclui campos de fila/chatbot em `conversations` e nova tabela `appointments`.
+- worker atualizado para respeitar `chatbot_enabled=false` em:
+  - `process_incoming_message`
+  - `send_follow_up`
+
+TDD:
+- arquivo novo: `tests/test_dashboard_op_central_tdd.py` (33 testes solicitados).
+- status inicial: falhas esperadas em massa (fase red).
+- status final: `OK` (33/33) via `unittest`.
+
+Validacao:
+- `cmd /c .\\.venv\\Scripts\\python.exe -m compileall app tests` -> OK.
+- `cmd /c .\\.venv\\Scripts\\python.exe -m pytest tests` -> bloqueado (`No module named pytest` no ambiente atual).
+- `cmd /c .\\.venv\\Scripts\\python.exe qa_tudo.py --no-dashboard --no-pause` -> `PASS=12 WARN=3 FAIL=0`.
+
+## Registro de ajuste - 2026-04-30 (usabilidade Central OP)
+
+Ajustes aplicados:
+- envio manual agora reabre conversa fechada automaticamente;
+- endpoint para iniciar/reabrir conversa por cliente:
+  - `POST /dashboard/op/contacts/{contact_id}/start-conversation?channel=whatsapp`;
+- auto-refresh de conversas, mensagens, fila humana e status;
+- filtro de canais de envio para mostrar somente canais realmente disponiveis;
+- botoes de aceitar/ignorar visiveis apenas com `human_pending`;
+- aceitar solicitacao humana desliga chatbot automaticamente;
+- fila humana ordenada por horario de requisicao;
+- modal urgente usando caminho simplificado (`menu_path_summary`);
+- aba Banco de Dados em lista unica com busca e modal de detalhe;
+- agenda em calendario semanal com exibicao em horario brasileiro.

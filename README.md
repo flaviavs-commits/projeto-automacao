@@ -418,3 +418,83 @@ alembic upgrade head
 - `generate_reply` passou a usar LLM local/open source com contexto de conversa e lock de dominio para estudio/agendamento.
 - Clientes agora possuem `customer_id` global e podem ser unificados por identidade de canal em `contact_identities` (WhatsApp/Instagram/Facebook).
 - Memorias-chave por cliente sao persistidas em `contact_memories`, com bloqueio de persistencia para mensagens ambiguas.
+
+## Central OP de Mensagens (FC VIP)
+
+Painel operacional expandido com foco em backend seguro e fluxo humano:
+
+- rota HTML:
+  - `GET /dashboard`
+  - `GET /dashboard/op`
+- APIs OP:
+  - `GET /dashboard/op/conversations`
+  - `GET /dashboard/op/conversations/{conversation_id}`
+  - `GET /dashboard/op/conversations/{conversation_id}/messages`
+  - `POST /dashboard/op/conversations/{conversation_id}/send`
+  - `GET /dashboard/op/human-queue`
+  - `POST /dashboard/op/conversations/{conversation_id}/human/accept`
+  - `POST /dashboard/op/conversations/{conversation_id}/human/ignore`
+  - `POST /dashboard/op/conversations/{conversation_id}/chatbot/toggle`
+  - `GET /dashboard/op/contacts`
+  - `GET /dashboard/op/contacts/{contact_id}`
+  - `GET /dashboard/op/appointments`
+  - `POST /dashboard/op/appointments`
+  - `PATCH /dashboard/op/appointments/{appointment_id}`
+  - `GET /dashboard/op/status`
+- compatibilidade legado:
+  - `GET /dashboard/op/state`
+  - `POST /dashboard/op/send`
+
+Novos services:
+
+- `app/services/dashboard_op_service.py`
+- `app/services/manual_message_service.py`
+- `app/services/human_queue_service.py`
+- `app/services/conversation_chatbot_control_service.py`
+- `app/services/lead_temperature_service.py`
+- `app/services/schedule_service.py`
+
+Seguranca do painel OP:
+
+- auth opcional por variavel de ambiente:
+  - `OP_DASHBOARD_AUTH_ENABLED`
+  - `OP_DASHBOARD_USERNAME`
+  - `OP_DASHBOARD_PASSWORD_HASH` (SHA-256 do segredo em texto puro)
+- envio manual sempre passa pelo backend service.
+- auditoria de eventos operacionais:
+  - `manual_message_sent`
+  - `human_request_accepted`
+  - `human_request_ignored`
+  - `chatbot_disabled`
+  - `chatbot_enabled`
+
+Dados novos:
+
+- `conversations`:
+  - `human_status`
+  - `human_accepted_at`
+  - `human_accepted_by`
+  - `human_ignored_at`
+  - `human_ignored_by`
+  - `chatbot_enabled`
+- nova tabela `appointments` para agenda operacional.
+
+Migracao:
+
+- `alembic/versions/20260430_0005_op_dashboard_human_queue_and_appointments.py`
+
+### Atualizacao de usabilidade - 2026-04-30 (tarde)
+
+Melhorias aplicadas na Central OP:
+
+- envio manual reabre conversa fechada automaticamente;
+- conversa pode ser iniciada pelo cadastro do cliente:
+  - `POST /dashboard/op/contacts/{contact_id}/start-conversation?channel=whatsapp`
+- auto-refresh de conversas, mensagens, fila humana e status;
+- selecao de canal de envio filtrada para canais realmente disponiveis;
+- botoes de aceitar/ignorar visiveis apenas quando `human_pending`;
+- aceitar solicitacao humana desliga chatbot automaticamente;
+- fila humana ordenada por horario de requisicao;
+- modal urgente mostra caminho simplificado do menu (`menu_path_summary`) em vez de ultima mensagem;
+- aba Banco de Dados em tela unica com busca + modal de detalhes;
+- agenda em formato calendario semanal (livre/reservado) com horario em padrao brasileiro.

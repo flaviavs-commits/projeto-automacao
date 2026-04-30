@@ -502,6 +502,27 @@ def process_incoming_message(payload: dict) -> dict:
                 raise ValueError(f"conversation not found: {message.conversation_id}")
             contact = db.get(Contact, conversation.contact_id)
 
+            if not bool(getattr(conversation, "chatbot_enabled", True)):
+                db.add(
+                    AuditLog(
+                        entity_type="conversation",
+                        entity_id=conversation.id,
+                        event_type="chatbot_disabled_inbound_stored",
+                        details={
+                            "conversation_id": str(conversation.id),
+                            "message_id": str(message.id),
+                        },
+                    )
+                )
+                db.commit()
+                _finish_job(job_id, "completed")
+                return {
+                    "task": "process_incoming_message",
+                    "status": "ignored_chatbot_disabled",
+                    "job_id": str(job_id),
+                    "message_id": str(message_id),
+                }
+
             context = MemoryService().build_context(str(conversation.id))
             route = RoutingService().route_intent(
                 {
@@ -784,6 +805,7 @@ def generate_reply(payload: dict) -> dict:
                 conversation.needs_human = menu_needs_human
                 conversation.human_reason = str(menu_result.get("human_reason") or "").strip() or None
                 conversation.human_requested_at = now_utc if menu_needs_human else None
+                conversation.human_status = "human_pending" if menu_needs_human else "closed"
                 if menu_needs_human:
                     db.add(
                         AuditLog(
@@ -1045,6 +1067,14 @@ def send_follow_up(*, conversation_id: str, stage_minutes: int, reply_message_id
             conversation = db.get(Conversation, conversation_uuid)
             if conversation is None:
                 raise ValueError(f"conversation not found: {conversation_uuid}")
+            if not bool(getattr(conversation, "chatbot_enabled", True)):
+                _finish_job(job_id, "completed")
+                return {
+                    "task": "send_follow_up",
+                    "status": "ignored_chatbot_disabled",
+                    "job_id": str(job_id),
+                    "conversation_id": conversation_id,
+                }
             if str(conversation.status or "").strip().lower() != "open":
                 _finish_job(job_id, "completed")
                 return {
