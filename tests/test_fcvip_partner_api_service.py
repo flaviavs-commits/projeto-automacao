@@ -10,6 +10,7 @@ from app.services.fcvip_partner_api_service import FCVIPPartnerAPIService
 class FCVIPPartnerAPIServiceTests(unittest.TestCase):
     def setUp(self) -> None:
         self.service = FCVIPPartnerAPIService()
+        self.service._lookup_cache.clear()
         self.original_enabled = settings.fcvip_partner_api_enabled
         self.original_base_url = settings.fcvip_partner_api_base_url
         self.original_api_key = settings.fcvip_partner_api_key
@@ -116,6 +117,60 @@ class FCVIPPartnerAPIServiceTests(unittest.TestCase):
 
         self.assertEqual(result.get("status"), "request_failed")
         self.assertEqual(result.get("status_code"), 403)
+
+    def test_lookup_retries_on_server_error_then_succeeds(self) -> None:
+        request = httpx.Request(
+            "GET",
+            "https://vs-production-c4dd.up.railway.app/api/partner/leads/",
+        )
+        first = httpx.Response(
+            503,
+            request=request,
+            json={"detail": "temporarily unavailable"},
+        )
+        second = httpx.Response(
+            200,
+            request=request,
+            json={
+                "success": True,
+                "data": {
+                    "leads": [{"id": 11, "whatsapp": "5511999999999"}],
+                    "total_pages": 1,
+                },
+            },
+        )
+
+        with patch("app.services.base.httpx.Client.request", side_effect=[first, second]) as mocked_request:
+            result = self.service.lookup_customer_by_whatsapp(phone_number="+55 (11) 99999-9999")
+
+        self.assertEqual(result.get("status"), "completed")
+        self.assertTrue(result.get("customer_exists"))
+        self.assertEqual(mocked_request.call_count, 2)
+
+    def test_lookup_uses_short_cache(self) -> None:
+        request = httpx.Request(
+            "GET",
+            "https://vs-production-c4dd.up.railway.app/api/partner/leads/",
+        )
+        response = httpx.Response(
+            200,
+            request=request,
+            json={
+                "success": True,
+                "data": {
+                    "leads": [{"id": 11, "whatsapp": "5511999999999"}],
+                    "total_pages": 1,
+                },
+            },
+        )
+
+        with patch("app.services.base.httpx.Client.request", return_value=response) as mocked_request:
+            first = self.service.lookup_customer_by_whatsapp(phone_number="+55 (11) 99999-9999")
+            second = self.service.lookup_customer_by_whatsapp(phone_number="5511999999999")
+
+        self.assertEqual(first.get("status"), "completed")
+        self.assertEqual(second.get("status"), "completed")
+        self.assertEqual(mocked_request.call_count, 1)
 
 
 if __name__ == "__main__":
