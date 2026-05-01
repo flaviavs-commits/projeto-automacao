@@ -1,4 +1,4 @@
-<!doctype html>
+﻿<!doctype html>
 <html lang="pt-BR">
 <head>
   <meta charset="utf-8"/>
@@ -160,7 +160,7 @@
       let data = null;
       try { data = await res.json(); } catch (_) { data = null; }
       if (!res.ok) {
-        throw new Error((data && data.detail) || "NÃ£o foi possÃ­vel concluir agora.");
+        throw new Error((data && data.detail) || "NÃƒÂ£o foi possÃƒÂ­vel concluir agora.");
       }
       return data;
     }
@@ -176,6 +176,86 @@
       } catch (_) {
         return String(value || "-");
       }
+    }
+
+    function fmtHour(value) {
+      if (!value) return "--:--";
+      try {
+        return new Intl.DateTimeFormat("pt-BR", {
+          hour: "2-digit",
+          minute: "2-digit",
+          hour12: false,
+          timeZone: "America/Sao_Paulo",
+        }).format(new Date(value));
+      } catch (_) {
+        return String(value || "--:--");
+      }
+    }
+
+    function slotKey(value) {
+      if (!value) return "";
+      try {
+        const parts = new Intl.DateTimeFormat("sv-SE", {
+          timeZone: "America/Sao_Paulo",
+          year: "numeric",
+          month: "2-digit",
+          day: "2-digit",
+          hour: "2-digit",
+          minute: "2-digit",
+          hour12: false,
+        }).formatToParts(new Date(value));
+        const pick = (type) => (parts.find((item) => item.type === type) || {}).value || "00";
+        return `${pick("year")}-${pick("month")}-${pick("day")}T${pick("hour")}:${pick("minute")}`;
+      } catch (_) {
+        return "";
+      }
+    }
+
+    function dateKeyLocal(value) {
+      if (!value) return "";
+      try {
+        return new Intl.DateTimeFormat("sv-SE", {
+          timeZone: "America/Sao_Paulo",
+          year: "numeric",
+          month: "2-digit",
+          day: "2-digit",
+        }).format(new Date(value));
+      } catch (_) {
+        return "";
+      }
+    }
+
+    function shiftMonthKey(monthKey, offset) {
+      const m = /^(\d{4})-(\d{2})$/.exec(String(monthKey || "").trim());
+      if (!m) return monthKey;
+      const year = Number(m[1]);
+      const monthIndex = Number(m[2]) - 1;
+      const base = new Date(Date.UTC(year, monthIndex + offset, 1));
+      const y = base.getUTCFullYear();
+      const mon = String(base.getUTCMonth() + 1).padStart(2, "0");
+      return `${y}-${mon}`;
+    }
+
+    function monthRange(monthKey) {
+      const m = /^(\d{4})-(\d{2})$/.exec(String(monthKey || "").trim());
+      if (!m) return { start: "", end: "" };
+      const year = Number(m[1]);
+      const month = Number(m[2]);
+      const lastDay = new Date(Date.UTC(year, month, 0)).getUTCDate();
+      const start = `${m[1]}-${m[2]}-01`;
+      const end = `${m[1]}-${m[2]}-${String(lastDay).padStart(2, "0")}`;
+      return { start, end };
+    }
+
+    function monthLabel(monthKey) {
+      const m = /^(\d{4})-(\d{2})$/.exec(String(monthKey || "").trim());
+      if (!m) return monthKey;
+      const d = new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, 1));
+      return new Intl.DateTimeFormat("pt-BR", {
+        month: "long",
+        year: "numeric",
+        timeZone: "UTC",
+      }).format(d);
     }
 
     function safe(v) {
@@ -253,11 +333,11 @@
           </div>
           <div className="mt-1 flex items-center gap-1 truncate text-[11px] text-slate-500 font-mono">
             <span className="truncate">${safe(item.contact?.phone || "-")}</span>
-            <span>â€¢</span>
+            <span>Ã¢â‚¬Â¢</span>
             <span className="truncate">${channel.label}</span>
           </div>
           <div className="mt-0.5 text-[10px] text-slate-500">
-            ${fmtDateTime(item.last_activity_at)} â€¢ ${safe(item.status || "-")}
+            ${fmtDateTime(item.last_activity_at)} Ã¢â‚¬Â¢ ${safe(item.status || "-")}
           </div>
         </button>
       `;
@@ -266,7 +346,7 @@
     function MessageBubble({ msg }) {
       const ui = CHANNEL_UI[msg.channel] || CHANNEL_UI.whatsapp;
       const sent = msg.type === "enviada";
-      const source = sent ? (msg.manual ? "Equipe" : (msg.automatic ? "AutomaÃ§Ã£o" : "SaÃ­da")) : "Cliente";
+      const source = sent ? (msg.manual ? "Equipe" : (msg.automatic ? "AutomaÃƒÂ§ÃƒÂ£o" : "SaÃƒÂ­da")) : "Cliente";
       const leftBorder = msg.channel === "instagram"
         ? "border-l-4 border-violet-400"
         : `border-l-4 ${ui.bubble}`;
@@ -308,7 +388,12 @@
       const [contacts, setContacts] = useState([]);
       const [contactSearch, setContactSearch] = useState("");
       const [contactModal, setContactModal] = useState({ open: false, data: null, id: null });
-      const [agenda, setAgenda] = useState({ slots: [], next: [] });
+      const [agenda, setAgenda] = useState({ slots: [], appointments: [], next: [] });
+      const [agendaMonthKey, setAgendaMonthKey] = useState(() => {
+        const today = dateKeyLocal(new Date());
+        return today ? today.slice(0, 7) : "";
+      });
+      const [agendaSelectedDate, setAgendaSelectedDate] = useState(() => dateKeyLocal(new Date()));
       const [urgentModal, setUrgentModal] = useState({ open: false, item: null, snoozedUntil: 0 });
       const [panelError, setPanelError] = useState("");
       const [errorText, setErrorText] = useState("");
@@ -586,8 +671,17 @@
       }
 
       async function loadAgenda() {
-        const data = await api("/dashboard/op/appointments?include_next=true");
-        setAgenda({ slots: data.slots || [], next: data.next_appointments || [] });
+        const range = monthRange(agendaMonthKey);
+        const q = new URLSearchParams();
+        q.set("include_next", "true");
+        if (range.start) q.set("start_date", range.start);
+        if (range.end) q.set("end_date", range.end);
+        const data = await api(`/dashboard/op/appointments?${q.toString()}`);
+        setAgenda({
+          slots: data.slots || [],
+          appointments: data.appointments || [],
+          next: data.next_appointments || [],
+        });
       }
 
       async function toggleChatbot() {
@@ -615,7 +709,7 @@
         }
         const [channel, identityId] = safe(selectedChannel).split("|");
         if (!channel) {
-          setErrorText("Este canal ainda nÃ£o estÃ¡ disponÃ­vel para envio.");
+          setErrorText("Este canal ainda nÃƒÂ£o estÃƒÂ¡ disponÃƒÂ­vel para envio.");
           return;
         }
         const payload = { channel, text };
@@ -652,9 +746,9 @@
         } catch (err) {
           const msg = String(err?.message || "");
           if (/failed to fetch/i.test(msg)) {
-            setErrorText("NÃ£o foi possÃ­vel enviar agora.");
+            setErrorText("NÃƒÂ£o foi possÃƒÂ­vel enviar agora.");
           } else {
-            setErrorText(msg || "NÃ£o foi possÃ­vel enviar por este canal agora.");
+            setErrorText(msg || "NÃƒÂ£o foi possÃƒÂ­vel enviar por este canal agora.");
           }
         } finally {
           setSending(false);
@@ -679,48 +773,101 @@
       }
 
       function renderCalendar() {
-        const slots = agenda.slots || [];
-        const byDayHour = new Map();
-        const days = [];
-        const hours = [];
-        for (const slot of slots) {
-          const d = new Date(slot.start_time);
-          const dayKey = safe(slot.start_time).slice(0, 10);
-          const dayLabel = new Intl.DateTimeFormat("pt-BR", {
-            weekday: "short",
-            day: "2-digit",
-            month: "2-digit",
-            timeZone: "America/Sao_Paulo",
-          }).format(d);
-          const hour = d.toLocaleString("pt-BR", { hour: "2-digit", hour12: false, timeZone: "America/Sao_Paulo" });
-          if (!days.find((x) => x.key === dayKey)) days.push({ key: dayKey, label: dayLabel });
-          if (!hours.includes(hour)) hours.push(hour);
-          byDayHour.set(`${dayKey}|${hour}`, slot.status);
+        const slots = Array.isArray(agenda.slots) ? agenda.slots : [];
+        const appointments = Array.isArray(agenda.appointments) ? agenda.appointments : [];
+        const selectedDayKey = String(agendaSelectedDate || "").slice(0, 10);
+        if (!slots.length) {
+          return html`
+            <div className="rounded-xl border border-dashed border-highway-border bg-white/60 p-4 text-sm text-slate-500">
+              A API nao retornou horarios para o periodo selecionado.
+            </div>
+          `;
         }
-        days.sort((a, b) => a.key.localeCompare(b.key));
-        hours.sort((a, b) => Number(a) - Number(b));
+
+        const appointmentBySlot = new Map();
+        for (const item of appointments) {
+          const key = slotKey(item.start_time);
+          if (!key) continue;
+          appointmentBySlot.set(key, item);
+        }
+
+        const dayMap = new Map();
+        for (const slot of slots) {
+          const slotStart = slot.start_time;
+          const key = slotKey(slotStart);
+          if (!key) continue;
+          const dayKey = key.slice(0, 10);
+          const bucket = dayMap.get(dayKey) || {
+            key: dayKey,
+            label: new Intl.DateTimeFormat("pt-BR", {
+              weekday: "short",
+              day: "2-digit",
+              month: "2-digit",
+              timeZone: "America/Sao_Paulo",
+            }).format(new Date(slotStart)),
+            slots: [],
+          };
+          bucket.slots.push({
+            start_time: slotStart,
+            status: String(slot.status || "").toLowerCase() || "free",
+            appointment: appointmentBySlot.get(key) || null,
+          });
+          dayMap.set(dayKey, bucket);
+        }
+
+        const days = [...dayMap.values()]
+          .sort((a, b) => a.key.localeCompare(b.key))
+          .map((day) => ({
+            ...day,
+            slots: [...day.slots].sort((a, b) => String(a.start_time || "").localeCompare(String(b.start_time || ""))),
+          }));
+
         return html`
-          <div className="overflow-auto thin-scroll">
-            <table className="w-full min-w-[760px] border-collapse text-xs">
-              <thead>
-                <tr>
-                  <th className="border border-highway-border bg-slate-50 px-2 py-2 text-left">HorÃ¡rio</th>
-                  ${days.map((d) => html`<th key=${d.key} className="border border-highway-border bg-slate-50 px-2 py-2 text-center">${d.label}</th>`)}
-                </tr>
-              </thead>
-              <tbody>
-                ${hours.map((h) => html`
-                  <tr key=${h}>
-                    <td className="border border-highway-border px-2 py-2 font-mono">${h}:00</td>
-                    ${days.map((d) => {
-                      const st = byDayHour.get(`${d.key}|${h}`) || "free";
-                      const cls = st === "reserved" ? "bg-rose-100 text-rose-700" : "bg-emerald-100 text-emerald-700";
-                      return html`<td key=${`${d.key}_${h}`} className=${`border border-highway-border px-2 py-2 text-center ${cls}`}>${st === "reserved" ? "Reservado" : "Livre"}</td>`;
-                    })}
-                  </tr>
-                `)}
-              </tbody>
-            </table>
+          <div className="space-y-2">
+            <div className="text-xs text-slate-500">
+              Horarios exibidos conforme retorno da API de agenda.
+            </div>
+            <div className="thin-scroll overflow-auto pb-1">
+              <div className="grid min-w-[760px] grid-cols-1 gap-2 md:grid-cols-2 xl:grid-cols-4 2xl:grid-cols-7">
+                ${days.map((day) => {
+                  const dayCardClass = day.key === selectedDayKey
+                    ? "rounded-xl border-2 border-highway-electric bg-blue-50/40 p-2"
+                    : "rounded-xl border border-highway-border bg-white p-2";
+                  return html`
+                  <div key=${day.key} className=${dayCardClass}>
+                    <div className="mb-2 flex items-center justify-between border-b border-highway-border pb-1">
+                      <div className="text-xs font-semibold uppercase tracking-wide text-slate-600">${safe(day.label)}</div>
+                      <div className="font-mono text-[11px] text-slate-500">${safe(day.key.split("-").reverse().join("/"))}</div>
+                    </div>
+                    <div className="space-y-1">
+                      ${day.slots.map((item) => {
+                        const isReserved = item.status === "reserved";
+                        const statusClass = isReserved
+                          ? "bg-rose-100 text-rose-700 border-rose-200"
+                          : "bg-emerald-100 text-emerald-700 border-emerald-200";
+                        return html`
+                          <div key=${`${day.key}_${item.start_time}`} className="rounded-lg border border-highway-border px-2 py-1.5">
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="font-mono text-xs text-slate-700">${fmtHour(item.start_time)}</span>
+                              <span className=${`rounded-full border px-1.5 py-0.5 text-[10px] font-semibold ${statusClass}`}>
+                                ${isReserved ? "Reservado" : "Livre"}
+                              </span>
+                            </div>
+                            ${item.appointment && html`
+                              <div className="mt-1 text-[11px] text-slate-600">
+                                <div className="font-semibold">${safe(item.appointment.customer_name || "Cliente")}</div>
+                                <div className="font-mono text-[10px]">${safe(item.appointment.customer_phone || "-")}</div>
+                              </div>
+                            `}
+                          </div>
+                        `;
+                      })}
+                    </div>
+                  </div>
+                `;
+                })}
+              </div>
+            </div>
           </div>
         `;
       }
@@ -758,6 +905,10 @@
       }, [contactSearch]);
 
       useEffect(() => {
+        loadAgenda().catch((err) => setPanelError(err.message || "Falha ao carregar agenda."));
+      }, [agendaMonthKey]);
+
+      useEffect(() => {
         const id1 = setInterval(() => loadStatus().catch(() => {}), 45000);
         const id2 = setInterval(() => loadConversations(true).catch(() => {}), 12000);
         const id3 = setInterval(() => loadHumanQueue().catch(() => {}), 15000);
@@ -773,7 +924,7 @@
 
       const emptyState = html`
         <div className="glass-card flex h-full min-h-[420px] flex-col items-center justify-center border-dashed p-8 text-center">
-          <div className="mb-3 text-4xl">ðŸ›°ï¸</div>
+          <div className="mb-3 text-4xl">Ã°Å¸â€ºÂ°Ã¯Â¸Â</div>
           <h3 className="text-lg font-semibold text-slate-700">Cockpit operacional pronto</h3>
           <p className="mt-1 max-w-md text-sm text-slate-500">
             Selecione uma conversa para iniciar. O painel atualiza sozinho em tempo real.
@@ -898,7 +1049,7 @@
                             <div className="mb-1.5 flex flex-wrap items-center justify-between gap-2">
                               <div>
                                 <div className="text-sm font-semibold">${safe(selectedConversation?.contact?.name || "Sem nome")}</div>
-                                <div className="font-mono text-xs text-slate-500">${safe(selectedConversation?.contact?.phone || "-")} â€¢ ${CHANNEL_UI[selectedConversation?.channel]?.label || "-"}</div>
+                                <div className="font-mono text-xs text-slate-500">${safe(selectedConversation?.contact?.phone || "-")} Ã¢â‚¬Â¢ ${CHANNEL_UI[selectedConversation?.channel]?.label || "-"}</div>
                               </div>
                               <div className="flex items-center gap-2">
                                 <span className="text-[11px] text-slate-500">Bot</span>
@@ -911,20 +1062,20 @@
                             </div>
 
                             <div className="thin-scroll mb-1.5 overflow-x-auto overflow-y-hidden rounded-xl border border-highway-border bg-white p-2">
-                              <div className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-slate-500">Informações rápidas</div>
+                              <div className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-slate-500">InformaÃ§Ãµes rÃ¡pidas</div>
                               <div className="flex w-max flex-nowrap gap-1 pr-1">
                                 ${(selectedConversation?.pillar_memories || []).map((m) => html`
                                   <span key=${m.key + m.value} className="inline-flex shrink-0 rounded-full border border-highway-border bg-slate-50 px-2 py-0.5 text-[11px] text-slate-600">${safe(m.label || m.key)}: ${safe(m.value)}</span>
                                 `)}
-                                ${!(selectedConversation?.pillar_memories || []).length && html`<span className="inline-flex shrink-0 text-xs text-slate-400">Sem memórias essenciais no momento.</span>`}
+                                ${!(selectedConversation?.pillar_memories || []).length && html`<span className="inline-flex shrink-0 text-xs text-slate-400">Sem memÃ³rias essenciais no momento.</span>`}
                               </div>
                             </div>
 
                             ${selectedConversation?.human_status === "human_pending" && html`
                               <div className="mb-2 flex items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-2 py-2 text-xs">
                                 <span className="font-semibold text-amber-700">Atendimento humano solicitado</span>
-                                <button onClick=${() => humanAction(selectedConversationId, "accept")} className="inline-flex items-center gap-1 rounded-lg border border-emerald-200 bg-gradient-to-r from-emerald-400 to-emerald-500 px-2 py-1 font-medium text-white">âœ“ Aceitar</button>
-                                <button onClick=${() => humanAction(selectedConversationId, "ignore")} className="inline-flex items-center gap-1 rounded-lg border border-rose-200 bg-gradient-to-r from-rose-400 to-rose-500 px-2 py-1 font-medium text-white">âœ• Ignorar</button>
+                                <button onClick=${() => humanAction(selectedConversationId, "accept")} className="inline-flex items-center gap-1 rounded-lg border border-emerald-200 bg-gradient-to-r from-emerald-400 to-emerald-500 px-2 py-1 font-medium text-white">Ã¢Å“â€œ Aceitar</button>
+                                <button onClick=${() => humanAction(selectedConversationId, "ignore")} className="inline-flex items-center gap-1 rounded-lg border border-rose-200 bg-gradient-to-r from-rose-400 to-rose-500 px-2 py-1 font-medium text-white">Ã¢Å“â€¢ Ignorar</button>
                               </div>
                             `}
 
@@ -936,9 +1087,9 @@
                               <div className="mb-1.5 flex flex-wrap items-center gap-2">
                                 <select value=${selectedChannel} onChange=${(e) => setSelectedChannel(e.target.value)} className="rounded-lg border border-highway-border px-2 py-2 text-xs">
                                   ${channelOptions.map((opt) => html`<option key=${opt.channel + opt.identityId} value=${`${opt.channel}|${opt.identityId}`}>${opt.label}</option>`)}
-                                  ${!channelOptions.length && html`<option value="">Canal indisponÃ­vel</option>`}
+                                  ${!channelOptions.length && html`<option value="">Canal indisponÃƒÂ­vel</option>`}
                                 </select>
-                                <span className="text-xs text-slate-500">AtualizaÃ§Ã£o automÃ¡tica ativa</span>
+                                <span className="text-xs text-slate-500">AtualizaÃƒÂ§ÃƒÂ£o automÃƒÂ¡tica ativa</span>
                               </div>
                               <textarea
                                 value=${draftText}
@@ -991,7 +1142,7 @@
                             <tr key=${c.id} className="cursor-pointer border-t border-highway-border hover:bg-slate-50" onClick=${() => openContact(c.id)}>
                               <td className="px-3 py-2">${safe(c.name || "Sem nome")}</td>
                               <td className="px-3 py-2 font-mono text-xs">${safe(c.phone || "-")}</td>
-                              <td className="px-3 py-2">${c.scheduled ? "Sim" : "NÃ£o"}</td>
+                              <td className="px-3 py-2">${c.scheduled ? "Sim" : "NÃƒÂ£o"}</td>
                               <td className="px-3 py-2">${safe(CHANNEL_UI[c.main_channel]?.label || c.main_channel || "-")}</td>
                               <td className="px-3 py-2">${c.is_hot ? "Quente" : "Normal"}</td>
                             </tr>
@@ -1004,19 +1155,65 @@
 
                 ${tab === "agenda" && html`
                   <${motion.section} key="tab_agenda" initial=${{ opacity: 0, x: 12 }} animate=${{ opacity: 1, x: 0 }} exit=${{ opacity: 0, x: -12 }} transition=${{ duration: .18 }} className="grid h-full min-h-0 grid-cols-[minmax(0,1fr)_320px] gap-3">
-                    <div className="glass-card min-h-0 p-3">${renderCalendar()}</div>
+                    <div className="glass-card min-h-0 p-3">
+                      <div className="mb-2 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-highway-border bg-white p-2">
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick=${() => setAgendaMonthKey((m) => shiftMonthKey(m, -1))}
+                            className="rounded-lg border border-highway-border px-2 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                          >
+                            ◀
+                          </button>
+                          <div className="min-w-[180px] text-center text-sm font-semibold text-slate-700">
+                            ${safe(monthLabel(agendaMonthKey))}
+                          </div>
+                          <button
+                            onClick=${() => setAgendaMonthKey((m) => shiftMonthKey(m, 1))}
+                            className="rounded-lg border border-highway-border px-2 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                          >
+                            ▶
+                          </button>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <label className="text-xs text-slate-500">Data especifica</label>
+                          <input
+                            type="date"
+                            value=${agendaSelectedDate || ""}
+                            onInput=${(e) => {
+                              const value = String(e.target.value || "");
+                              setAgendaSelectedDate(value);
+                              if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+                                setAgendaMonthKey(value.slice(0, 7));
+                              }
+                            }}
+                            className="rounded-lg border border-highway-border px-2 py-1 text-xs"
+                          />
+                          <button
+                            onClick=${() => {
+                              const today = dateKeyLocal(new Date());
+                              setAgendaSelectedDate(today);
+                              setAgendaMonthKey(today.slice(0, 7));
+                            }}
+                            className="rounded-lg border border-highway-border px-2 py-1 text-xs text-slate-600 hover:bg-slate-50"
+                          >
+                            Hoje
+                          </button>
+                        </div>
+                      </div>
+                      ${renderCalendar()}
+                    </div>
                     <aside className="glass-card thin-scroll min-h-0 overflow-y-auto p-3">
-                      <h3 className="text-sm font-semibold">PrÃ³ximos 5 agendamentos</h3>
+                      <h3 className="text-sm font-semibold">PrÃƒÂ³ximos 5 agendamentos</h3>
                       <div className="mt-2 space-y-2">
                         ${(agenda.next || []).length
                           ? (agenda.next || []).map((a) => html`
                               <div key=${a.id} className="rounded-lg border border-highway-border bg-white px-2 py-2 text-xs">
                                 <div className="font-semibold">${safe(a.customer_name || "Sem nome")}</div>
                                 <div className="font-mono text-[11px] text-slate-500">${safe(a.customer_phone || "-")}</div>
-                                <div className="mt-1 text-slate-500">${fmtDateTime(a.start_time)} â€¢ ${safe(a.status || "-")}</div>
+                                <div className="mt-1 text-slate-500">${fmtDateTime(a.start_time)} Ã¢â‚¬Â¢ ${safe(a.status || "-")}</div>
                               </div>
                             `)
-                          : html`<div className="text-xs text-slate-500">NÃ£o hÃ¡ agendamentos prÃ³ximos.</div>`}
+                          : html`<div className="text-xs text-slate-500">NÃƒÂ£o hÃƒÂ¡ agendamentos prÃƒÂ³ximos.</div>`}
                       </div>
                     </aside>
                   </${motion.section}>
@@ -1026,7 +1223,7 @@
                   <${motion.section} key="tab_humano" initial=${{ opacity: 0, x: 12 }} animate=${{ opacity: 1, x: 0 }} exit=${{ opacity: 0, x: -12 }} transition=${{ duration: .18 }} className="glass-card thin-scroll h-full min-h-0 overflow-y-auto p-3">
                     <div className="mb-2 flex items-center justify-between">
                       <h2 className="text-sm font-semibold">Fila de atendimento humano</h2>
-                      <span className="text-xs text-slate-500">Ordem por solicitaÃ§Ã£o</span>
+                      <span className="text-xs text-slate-500">Ordem por solicitaÃƒÂ§ÃƒÂ£o</span>
                     </div>
                     <div className="space-y-2">
                       ${humanQueue.map((q) => html`
@@ -1034,21 +1231,21 @@
                           <div className="flex items-center justify-between gap-2">
                             <div>
                               <div className="text-sm font-semibold">${safe(q.name || "Sem nome")}</div>
-                              <div className="font-mono text-xs text-slate-500">${safe(q.phone || "-")} â€¢ ${safe(CHANNEL_UI[q.channel]?.label || q.channel || "-")}</div>
+                              <div className="font-mono text-xs text-slate-500">${safe(q.phone || "-")} Ã¢â‚¬Â¢ ${safe(CHANNEL_UI[q.channel]?.label || q.channel || "-")}</div>
                             </div>
                             <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-700">${safe(q.human_status || "-")}</span>
                           </div>
-                          <div className="mt-2 text-xs text-slate-600">Motivo: ${safe(q.human_reason || "Cliente pediu ajuda")}</div>
+                          <div className="mt-2 text-xs text-slate-600">Motivo: ${safe(q.human_reason_label || q.human_reason || "Cliente pediu ajuda")}</div>
                           <div className="text-xs text-slate-500">Solicitado em: ${fmtDateTime(q.human_requested_at)}</div>
                           <div className="text-xs text-slate-500">Caminho no menu: ${safe(q.menu_path_summary || "Sem trilha")}</div>
                           <div className="mt-2 flex items-center gap-2">
-                            <button onClick=${() => humanAction(q.conversation_id, "accept")} className="inline-flex items-center gap-1 rounded-lg border border-emerald-200 bg-gradient-to-r from-emerald-400 to-emerald-500 px-2 py-1 text-xs font-medium text-white">âœ“ Aceitar</button>
-                            <button onClick=${() => humanAction(q.conversation_id, "ignore")} className="inline-flex items-center gap-1 rounded-lg border border-rose-200 bg-gradient-to-r from-rose-400 to-rose-500 px-2 py-1 text-xs font-medium text-white">âœ• Ignorar</button>
+                            <button onClick=${() => humanAction(q.conversation_id, "accept")} className="inline-flex items-center gap-1 rounded-lg border border-emerald-200 bg-gradient-to-r from-emerald-400 to-emerald-500 px-2 py-1 text-xs font-medium text-white">Ã¢Å“â€œ Aceitar</button>
+                            <button onClick=${() => humanAction(q.conversation_id, "ignore")} className="inline-flex items-center gap-1 rounded-lg border border-rose-200 bg-gradient-to-r from-rose-400 to-rose-500 px-2 py-1 text-xs font-medium text-white">Ã¢Å“â€¢ Ignorar</button>
                             <button onClick=${() => { setTab("conversas"); setSelectedConversationId(q.conversation_id); }} className="rounded-lg border border-highway-border px-2 py-1 text-xs text-slate-600">Ver conversa</button>
                           </div>
                         </div>
                       `)}
-                      ${!humanQueue.length && html`<div className="text-xs text-slate-500">Sem solicitaÃ§Ãµes no momento.</div>`}
+                      ${!humanQueue.length && html`<div className="text-xs text-slate-500">Sem solicitaÃƒÂ§ÃƒÂµes no momento.</div>`}
                     </div>
                   </${motion.section}>
                 `}
@@ -1069,22 +1266,24 @@
               </div>
               <div className="grid grid-cols-2 gap-2 text-sm">
                 <div className="rounded-xl border border-highway-border bg-white p-3">
-                  <div className="mb-1 text-xs uppercase text-slate-500">Dados principais</div>
+                  <div className="mb-1 text-xs uppercase text-slate-500">Dados locais (PostgreSQL)</div>
                   <div>Nome: <b>${safe(contactModal.data?.main?.name || "Sem nome")}</b></div>
                   <div>Telefone: <span className="font-mono text-xs">${safe(contactModal.data?.main?.phone || "-")}</span></div>
                   <div>Status cliente: ${safe(contactModal.data?.main?.customer_status || "-")}</div>
-                  <div>Agendado: ${contactModal.data?.main?.scheduled ? "Sim" : "NÃ£o"}</div>
-                  <div>Perfil quente: ${contactModal.data?.main?.is_hot ? "Sim" : "NÃ£o"}</div>
-                  <div>Ãšltima interaÃ§Ã£o: ${fmtDateTime(contactModal.data?.main?.last_interaction_at)}</div>
+                  <div>Agendado: ${contactModal.data?.main?.scheduled ? "Sim" : "NÃƒÂ£o"}</div>
+                  <div>Perfil quente: ${contactModal.data?.main?.is_hot ? "Sim" : "NÃƒÂ£o"}</div>
+                  <div>ÃƒÅ¡ltima interaÃƒÂ§ÃƒÂ£o: ${fmtDateTime(contactModal.data?.main?.last_interaction_at)}</div>
+                  <div className="mt-1 text-xs text-slate-500">Origem: ${safe(contactModal.data?.data_sources?.local_database?.source || "postgresql")}</div>
                 </div>
                 <div className="rounded-xl border border-highway-border bg-white p-3">
-                  <div className="mb-1 text-xs uppercase text-slate-500">Dados FC VIP (API)</div>
+                  <div className="mb-1 text-xs uppercase text-slate-500">Dados FC VIP (API - somente leitura)</div>
                   ${contactModal.data?.fcvip_api?.status === "completed"
                     ? html`
-                        <div>Cliente FC VIP: ${contactModal.data?.fcvip_api?.customer_exists ? "Sim" : "NÃ£o"}</div>
+                        <div>Cliente FC VIP: ${contactModal.data?.fcvip_api?.customer_exists ? "Sim" : "NÃƒÂ£o"}</div>
                         <div>Status FC VIP: ${safe(contactModal.data?.fcvip_api?.customer_status || "-")}</div>
                       `
-                    : html`<div className="text-slate-500">${safe(contactModal.data?.fcvip_api?.message || "Consulta indisponÃ­vel no momento.")}</div>`}
+                    : html`<div className="text-slate-500">${safe(contactModal.data?.fcvip_api?.message || "Consulta indisponÃƒÂ­vel no momento.")}</div>`}
+                  <div className="mt-1 text-xs text-slate-500">IntegraÃƒÂ§ÃƒÂ£o sem gravaÃƒÂ§ÃƒÂ£o no banco local.</div>
                 </div>
                 <div className="rounded-xl border border-highway-border bg-white p-3">
                   <div className="mb-1 text-xs uppercase text-slate-500">Canais conectados</div>
@@ -1092,9 +1291,9 @@
                   ${!(contactModal.data?.channels || []).length && html`<div className="text-slate-500">Sem canais extras</div>`}
                 </div>
                 <div className="rounded-xl border border-highway-border bg-white p-3">
-                  <div className="mb-1 text-xs uppercase text-slate-500">MemÃ³rias importantes</div>
+                  <div className="mb-1 text-xs uppercase text-slate-500">MemÃƒÂ³rias importantes</div>
                   ${(contactModal.data?.memories || []).slice(0, 20).map((m) => html`<div key=${m.key + m.value}>${safe(m.label || m.key)}: ${safe(m.value || "-")}</div>`)}
-                  ${!(contactModal.data?.memories || []).length && html`<div className="text-slate-500">Sem memÃ³rias</div>`}
+                  ${!(contactModal.data?.memories || []).length && html`<div className="text-slate-500">Sem memÃƒÂ³rias</div>`}
                 </div>
               </div>
             </div>
@@ -1109,12 +1308,12 @@
                 <div><b>Cliente:</b> ${safe(urgentModal.item.name || "-")}</div>
                 <div><b>Telefone:</b> <span className="font-mono text-xs">${safe(urgentModal.item.phone || "-")}</span></div>
                 <div><b>Canal:</b> ${safe(CHANNEL_UI[urgentModal.item.channel]?.label || urgentModal.item.channel || "-")}</div>
-                <div><b>Motivo:</b> ${safe(urgentModal.item.human_reason || "Cliente pediu ajuda")}</div>
+                <div><b>Motivo:</b> ${safe(urgentModal.item.human_reason_label || urgentModal.item.human_reason || "Cliente pediu ajuda")}</div>
                 <div><b>Caminho no menu:</b> ${safe(urgentModal.item.menu_path_summary || "Sem trilha")}</div>
               </div>
               <div className="mt-3 flex flex-wrap items-center gap-2">
-                <button onClick=${() => humanAction(urgentModal.item.conversation_id, "accept")} className="inline-flex items-center gap-1 rounded-lg border border-emerald-200 bg-gradient-to-r from-emerald-400 to-emerald-500 px-3 py-2 text-xs font-semibold text-white">âœ“ Aceitar solicitaÃ§Ã£o</button>
-                <button onClick=${() => humanAction(urgentModal.item.conversation_id, "ignore")} className="inline-flex items-center gap-1 rounded-lg border border-rose-200 bg-gradient-to-r from-rose-400 to-rose-500 px-3 py-2 text-xs font-semibold text-white">âœ• Ignorar</button>
+                <button onClick=${() => humanAction(urgentModal.item.conversation_id, "accept")} className="inline-flex items-center gap-1 rounded-lg border border-emerald-200 bg-gradient-to-r from-emerald-400 to-emerald-500 px-3 py-2 text-xs font-semibold text-white">Ã¢Å“â€œ Aceitar solicitaÃƒÂ§ÃƒÂ£o</button>
+                <button onClick=${() => humanAction(urgentModal.item.conversation_id, "ignore")} className="inline-flex items-center gap-1 rounded-lg border border-rose-200 bg-gradient-to-r from-rose-400 to-rose-500 px-3 py-2 text-xs font-semibold text-white">Ã¢Å“â€¢ Ignorar</button>
                 <button onClick=${() => setUrgentModal((s) => ({ ...s, open: false, snoozedUntil: Date.now() + 120000 }))} className="rounded-lg border border-highway-border px-3 py-2 text-xs">Fechar por 2 min</button>
               </div>
             </div>
@@ -1127,6 +1326,7 @@
   </script>
 </body>
 </html>
+
 
 
 

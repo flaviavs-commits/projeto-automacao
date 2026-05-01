@@ -499,6 +499,7 @@ class TestDashboardOPCentralTDD(unittest.TestCase):
         assert "conversations" in data
         assert "agenda" in data
         assert "notes" in data
+        assert "data_sources" in data
 
     # 30
     def test_agenda_retorna_horarios_livres_reservados(self) -> None:
@@ -506,6 +507,15 @@ class TestDashboardOPCentralTDD(unittest.TestCase):
         response = self.client.get("/dashboard/op/appointments")
         assert response.status_code == 200
         assert "slots" in response.json()
+
+    def test_agenda_aceita_filtro_periodo_por_query(self) -> None:
+        settings.op_dashboard_auth_enabled = False
+        response = self.client.get("/dashboard/op/appointments?start_date=2026-05-01&end_date=2026-05-31")
+        assert response.status_code == 200
+        payload = response.json()
+        assert "slots" in payload
+        assert payload.get("range_start_date") == "2026-05-01"
+        assert payload.get("range_end_date") == "2026-05-31"
 
     # 31
     def test_proximos_5_agendamentos_lista_ou_mensagem_vazia(self) -> None:

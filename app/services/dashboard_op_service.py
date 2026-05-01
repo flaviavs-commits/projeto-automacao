@@ -343,6 +343,17 @@ class DashboardOpService:
                 for item in appointments
             ],
             "notes": {"text": ""},
+            "data_sources": {
+                "local_database": {
+                    "mode": "read_write",
+                    "source": "postgresql",
+                },
+                "fcvip_api": {
+                    "mode": "read_only",
+                    "writes_to_local_db": False,
+                    "sync_enabled": False,
+                },
+            },
             "fcvip_api": self._read_fcvip_snapshot(contact=contact),
         }
 
