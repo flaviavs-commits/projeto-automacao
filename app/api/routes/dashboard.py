@@ -1,6 +1,6 @@
 ﻿from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 from hashlib import sha256
 from pathlib import Path
 import secrets
@@ -266,10 +266,17 @@ def contact_start_conversation(
 @router.get("/dashboard/op/appointments")
 def appointments_list(
     include_next: bool = Query(default=False),
+    start_date: date | None = Query(default=None),
+    end_date: date | None = Query(default=None),
     _: str | None = Depends(_authorize_dashboard),
     db: Session = Depends(get_db),
 ) -> dict:
-    return ScheduleService().list_appointments(db=db, include_next=include_next)
+    return ScheduleService().list_appointments(
+        db=db,
+        include_next=include_next,
+        start_date=start_date,
+        end_date=end_date,
+    )
 
 
 @router.post("/dashboard/op/appointments")

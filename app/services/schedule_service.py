@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from uuid import UUID
 from zoneinfo import ZoneInfo
 
@@ -16,11 +16,30 @@ class ScheduleService:
     """Minimal appointment scheduling service for dashboard OP."""
     _LOCAL_TZ = ZoneInfo("America/Sao_Paulo")
 
-    def list_appointments(self, *, db: Session, include_next: bool = False) -> dict:
+    def list_appointments(
+        self,
+        *,
+        db: Session,
+        include_next: bool = False,
+        start_date: date | None = None,
+        end_date: date | None = None,
+    ) -> dict:
         now_utc = datetime.now(timezone.utc)
         now_local = now_utc.astimezone(self._LOCAL_TZ)
-        start_day_local = now_local.replace(hour=0, minute=0, second=0, microsecond=0)
-        end_day_local = start_day_local + timedelta(days=7)
+        if start_date is None and end_date is None:
+            start_day_local = now_local.replace(hour=0, minute=0, second=0, microsecond=0)
+            end_day_local = start_day_local + timedelta(days=7)
+        else:
+            effective_start = start_date or end_date
+            effective_end = end_date or effective_start
+            if effective_start is None or effective_end is None:
+                start_day_local = now_local.replace(hour=0, minute=0, second=0, microsecond=0)
+                end_day_local = start_day_local + timedelta(days=7)
+            else:
+                if effective_end < effective_start:
+                    effective_start, effective_end = effective_end, effective_start
+                start_day_local = datetime.combine(effective_start, datetime.min.time(), tzinfo=self._LOCAL_TZ)
+                end_day_local = datetime.combine(effective_end, datetime.min.time(), tzinfo=self._LOCAL_TZ) + timedelta(days=1)
         start_day_utc = start_day_local.astimezone(timezone.utc)
         end_day_utc = end_day_local.astimezone(timezone.utc)
 
@@ -38,11 +57,15 @@ class ScheduleService:
             .scalars()
             .all()
         )
-        slots = self._build_slots(start_day_local=start_day_local, days=7, reserved=rows)
+        range_days = max(1, (end_day_local - start_day_local).days)
+        range_days = min(range_days, 93)
+        slots = self._build_slots(start_day_local=start_day_local, days=range_days, reserved=rows)
 
         payload = {
             "appointments": [self._serialize(item) for item in rows],
             "slots": slots,
+            "range_start_date": start_day_local.date().isoformat(),
+            "range_end_date": (end_day_local - timedelta(days=1)).date().isoformat(),
         }
 
         if include_next:
