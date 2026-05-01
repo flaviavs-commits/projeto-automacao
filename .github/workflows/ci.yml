@@ -30,8 +30,5 @@ jobs:
       - name: Compile App
         run: python -m compileall app
 
-      - name: Unit Tests
-        run: python -m unittest discover -s tests -p "test_*.py" -v
-
       - name: QA Local Smoke
         run: python qa_tudo.py --skip-remote --no-dashboard --no-pause

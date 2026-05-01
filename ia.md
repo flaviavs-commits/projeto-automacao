@@ -1,4 +1,4 @@
-# Contexto IA - bot-multiredes
+﻿# Contexto IA - bot-multiredes
 
 ## Regra operacional permanente
 
@@ -12,7 +12,7 @@
 - Prioridade P0 permanente: rodar `qa_tudo.py` e fechar todas as falhas antes de considerar a etapa concluida.
 - Fluxo obrigatorio: executar QA completo -> identificar falhas -> corrigir -> reexecutar QA ate estabilizar.
 - Padrao de qualidade obrigatorio: seguir 100% a pasta `D:\Projeto\Chosen\Projeto-automacao\felixo-standards`.
-- Contrato principal backend: `D:\Projeto\Chosen\Projeto-automacao\felixo-standards\PADRÕES DE DESIGN\DESIGN_SYSTEM_PARA_BACKEND.md`.
+- Contrato principal backend: `D:\Projeto\Chosen\Projeto-automacao\felixo-standards\PADRÃ•ES DE DESIGN\DESIGN_SYSTEM_PARA_BACKEND.md`.
 - Toda correcao deve manter modularizacao forte, separacao de responsabilidades, testabilidade e extensibilidade (Open/Closed).
 
 ## Escopo do projeto
@@ -39,7 +39,7 @@ Backend centralizado para automacao multi-redes com:
 
 - Import de `app.main`, `app.workers.celery_app` e `app.workers.tasks` funciona.
 - `APP_PORT`/`PORT`, `DATABASE_URL` e `REDIS_URL` carregam por settings.
-- `Procfile` presente e compatível com Railway.
+- `Procfile` presente e compatÃ­vel com Railway.
 - `health` responde com degradado quando DB local indisponivel (comportamento esperado).
 - `alembic history` e `alembic heads` funcionam; `alembic current` depende de DB ativo.
 - DB local (`localhost:5432`) e Redis local (`localhost:6379`) estavam indisponiveis no momento do teste.
@@ -1191,7 +1191,7 @@ Deploy e validacao em producao:
   - `worker` deployment `0a1eaa8e-6a6b-495d-b7e9-d8f1b58b7a94` (`SUCCESS`)
 - Testes `--once` em producao:
   - mensagem de agendamento retornou `llm_model=rule_schedule_site_only`, com texto sem confirmar horario e link de agendamento.
-  - mensagem ofensiva retornou `llm_model=rule_respect_redirect`, sem resposta genérica de "sou IA".
+  - mensagem ofensiva retornou `llm_model=rule_respect_redirect`, sem resposta genÃ©rica de "sou IA".
 
 ## Registro de task - 2026-04-15 (politica de respostas genericas para casos nao especificos)
 
@@ -1523,7 +1523,7 @@ Causa:
 Correcao aplicada:
 - `app/services/menu_bot_service.py`:
   - adicionada validacao de nome confiavel (`_is_reliable_name`);
-  - added fallback de leitura de `nome_cliente` em memórias (`_resolve_customer_name`);
+  - added fallback de leitura de `nome_cliente` em memÃ³rias (`_resolve_customer_name`);
   - quando cliente existente nao tem nome confiavel, fluxo volta para `collect_new_customer_data` pedindo nome.
 - `tests/test_menu_bot_service.py`:
   - novo teste cobrindo cliente existente com nome nao confiavel.
@@ -1636,3 +1636,89 @@ Proximo passo imediato ao retomar:
 2. Rodar `cmd /c .\.venv\Scripts\python.exe -m compileall app tests`.
 3. Rodar `cmd /c .\.venv\Scripts\python.exe qa_tudo.py --no-dashboard --no-pause`.
 4. Atualizar `README.md`, `ia.md` e `humano.md` com o resultado final consolidado.
+
+## Registro de retomada concluida - 2026-05-01 (pendencias de 2026-04-30)
+
+Task executada: conclusao integral das pendencias que ficaram interrompidas na rodada anterior.
+
+Execucao realizada:
+- `cmd /c .\\.venv\\Scripts\\python.exe -m pytest tests`
+  - resultado final: `170 passed`.
+- `cmd /c .\\.venv\\Scripts\\python.exe -m compileall app tests`
+  - resultado final: `OK`.
+- `cmd /c .\\.venv\\Scripts\\python.exe qa_tudo.py --no-dashboard --no-pause`
+  - resultado final: `PASS=12 WARN=3 FAIL=0`.
+
+Correcao aplicada durante a retomada:
+- Regressao detectada no payload de fila humana:
+  - `human_reason` estava sendo serializado como label amigavel (`Agendamento`) e quebrou compatibilidade com contrato legado que espera codigo canonico (`agendamento`).
+- Ajuste implementado:
+  - `app/services/human_queue_service.py` agora expoe:
+    - `human_reason` (codigo canonico em lowercase);
+    - `human_reason_label` (label amigavel para interface).
+  - `app/templates/dashboard_op.html` atualizado para renderizar `human_reason_label` com fallback seguro.
+
+Fechamento:
+- Todas as 4 pendencias listadas no bloco de execucao interrompida de 2026-04-30 foram concluidas nesta rodada.
+
+## Registro de task - 2026-05-01 (agenda em formato calendario com horarios por dia)
+
+Task executada: refactor visual da aba Agenda da Central OP para formato de calendario com horarios exibidos dentro de cada dia.
+
+Entregas:
+- `app/templates/dashboard_op.html`:
+  - a agenda deixou de exibir grade matricial por hora x dia;
+  - passou a renderizar cards por dia com lista de horarios dentro de cada coluna;
+  - cada horario mostra status (`Livre`/`Reservado`);
+  - quando existir agendamento reservado no slot, exibe nome e telefone do cliente no proprio horario.
+- fonte de dados da agenda mantida pela API:
+  - o front passou a usar explicitamente `slots` e `appointments` retornados por `GET /dashboard/op/appointments?include_next=true`;
+  - os horarios exibidos sao somente os retornados pela API (sem inferencia adicional no frontend).
+
+Validacao:
+- `cmd /c .\\.venv\\Scripts\\python.exe -m pytest tests\\test_dashboard_op_central_tdd.py tests\\test_dashboard_human_pending.py` -> `40 passed`.
+- `cmd /c .\\.venv\\Scripts\\python.exe -m pytest tests` -> `170 passed`.
+- `cmd /c .\\.venv\\Scripts\\python.exe qa_tudo.py --no-dashboard --no-pause` -> `PASS=12 WARN=3 FAIL=0`.
+
+## Registro de task - 2026-05-01 (agenda com navegacao mensal + data especifica)
+
+Task executada: evolucao da Agenda OP para navegacao por mes com setas e selecao de data especifica, mantendo fonte de horarios via API.
+
+Backend:
+- `GET /dashboard/op/appointments` agora aceita filtros opcionais:
+  - `start_date=YYYY-MM-DD`
+  - `end_date=YYYY-MM-DD`
+- `app/services/schedule_service.py` atualizado para:
+  - montar slots no intervalo solicitado (com limite de seguranca);
+  - retornar metadados `range_start_date` e `range_end_date`.
+
+Frontend:
+- `app/templates/dashboard_op.html` atualizado com:
+  - setas `mes anterior/proximo`;
+  - label do mes corrente;
+  - campo `input type=date` para escolher data especifica;
+  - botao `Hoje` para reset rapido;
+  - destaque visual do dia selecionado no calendario.
+- o carregamento da agenda passou a consultar a API com o intervalo do mes selecionado.
+
+Validacao:
+- `cmd /c .\\.venv\\Scripts\\python.exe -m pytest tests\\test_dashboard_op_central_tdd.py tests\\test_dashboard_human_pending.py` -> `41 passed`.
+- `cmd /c .\\.venv\\Scripts\\python.exe -m pytest tests` -> `171 passed`.
+- `cmd /c .\\.venv\\Scripts\\python.exe qa_tudo.py --no-dashboard --no-pause` -> `PASS=12 WARN=3 FAIL=0`.
+
+## Registro de ajuste - 2026-05-01 (descontinuacao de testes e road_test)
+
+Task executada: remocao dos caminhos de teste e road test do repositorio ativo.
+
+Escopo removido:
+- diretorio `tests/`
+- diretorio `road_test/`
+- artefatos relacionados em `dist/`, `build/`, `.pytest_cache/` e `storage/road_test/`
+
+Atualizacoes aplicadas:
+- CI atualizado para remover etapa `unittest discover -s tests`.
+- `README.md` atualizado para remover referencias operacionais de `road_test`.
+
+Observacao:
+- referencias antigas a `tests/` e `road_test/` em blocos historicos deste arquivo permanecem apenas como registro de execucoes passadas.
+

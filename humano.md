@@ -1048,3 +1048,82 @@ Foi feito um segundo ajuste focado em operacao do painel:
 - botoes aceitar/ignorar so aparecem quando existe solicitacao pendente;
 - aba Banco de Dados virou tela unica com busca e modal de detalhe;
 - agenda passou para formato calendario semanal, com horario em padrao brasileiro.
+
+## Registro de retomada concluida - 2026-05-01 (pendencias de 2026-04-30)
+
+Task executada: fechamento completo das pendencias que tinham ficado interrompidas.
+
+Execucao realizada:
+- `cmd /c .\\.venv\\Scripts\\python.exe -m pytest tests`
+  - resultado: `170 passed`.
+- `cmd /c .\\.venv\\Scripts\\python.exe -m compileall app tests`
+  - resultado: `OK`.
+- `cmd /c .\\.venv\\Scripts\\python.exe qa_tudo.py --no-dashboard --no-pause`
+  - resultado: `PASS=12 WARN=3 FAIL=0`.
+
+Correcao aplicada:
+- regressao no payload da fila humana (campo `human_reason` em label amigavel) foi corrigida para manter compatibilidade legado.
+- `app/services/human_queue_service.py` passou a retornar:
+  - `human_reason` (codigo canonico);
+  - `human_reason_label` (texto amigavel para tela OP).
+- `app/templates/dashboard_op.html` ajustado para usar `human_reason_label` na exibicao da interface.
+
+Fechamento:
+- as 4 pendencias listadas no bloco de execucao interrompida de 2026-04-30 foram concluidas nesta rodada.
+
+## Registro de task - 2026-05-01 (agenda em formato calendario)
+
+Foi feito ajuste na aba Agenda da Central OP para ficar no formato de calendario com horarios dentro de cada dia.
+
+O que mudou:
+- a visualizacao antiga (tabela cruzando linha de horario com coluna de dia) foi substituida por calendario em cards diarios;
+- cada dia agora lista seus horarios diretamente dentro do bloco do dia;
+- cada horario mostra `Livre`/`Reservado`;
+- quando o slot tem agendamento, o horario mostra tambem nome e telefone do cliente.
+
+Fonte dos horarios:
+- os horarios exibidos sao os retornados pela API de agenda (`GET /dashboard/op/appointments?include_next=true`), usando `slots` + `appointments`.
+- nao foi mantida inferencia extra de horarios no frontend.
+
+Validacao:
+- `pytest` dos testes de dashboard: `40 passed`;
+- suite completa: `170 passed`;
+- `qa_tudo.py --no-dashboard --no-pause`: `PASS=12 WARN=3 FAIL=0`.
+
+## Registro de task - 2026-05-01 (agenda com mes e data especifica)
+
+A agenda da Central OP foi atualizada para navegacao mensal com setas e selecao de data especifica.
+
+O que foi entregue:
+- setas para trocar mes anterior/proximo;
+- exibicao do mes atual no topo;
+- campo de data (`type=date`) para escolher um dia especifico;
+- botao `Hoje`;
+- destaque visual do dia escolhido no calendario.
+
+API da agenda:
+- endpoint passou a aceitar intervalo opcional:
+  - `start_date=YYYY-MM-DD`
+  - `end_date=YYYY-MM-DD`
+- o frontend usa esses parametros para buscar os horarios do mes selecionado.
+
+Validacao:
+- testes de dashboard: `41 passed`;
+- suite completa: `171 passed`;
+- QA: `PASS=12 WARN=3 FAIL=0`.
+
+## Registro de ajuste - 2026-05-01 (descontinuacao de testes e road_test)
+
+Task executada: limpeza do repositorio para remover suites de teste e scripts de road test.
+
+Escopo removido:
+- diretorio `tests/`
+- diretorio `road_test/`
+- artefatos de suporte associados (`build/`, `dist/`, `.pytest_cache/`, `storage/road_test/`)
+
+Ajustes complementares:
+- CI ajustado para nao executar mais `unittest discover -s tests`.
+- README ajustado para retirar comandos quebrados de `road_test`.
+
+Observacao:
+- citacoes antigas a `tests/` e `road_test` neste arquivo sao historicas e nao representam mais o fluxo atual.

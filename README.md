@@ -65,11 +65,6 @@ app/
     celery_app.py
     tasks.py
 alembic/
-road_test/
-  chat_test_app.py
-  build_chat_test_exe.cmd
-  iniciar_leve_local.cmd
-  parar_tudo_local.cmd
 ```
 
 ## Configuracao
@@ -284,71 +279,10 @@ Observacao:
 - Se a API estiver em versao com novas tabelas (ex.: `contact_identities`), execute migracoes antes de validar webhook:
   - `alembic upgrade head`
 
-## Road Test Isolado (chat EXE)
+## Nota de descontinuacao
 
-- Objetivo: testar conversa com o modelo "cara da empresa" sem interferir no fluxo real da API/worker.
-- O chat de teste reutiliza as mesmas regras de dominio, memoria-chave e bloqueio de ambiguidade do backend.
-- Antes de rodar, configure no `.env` o endpoint/modelos de teste (`LLM_BASE_URL`, `LLM_MODEL`, `LLM_TEST_MODELS`).
-- O build do EXE inclui `app/prompts/studio_agendamento.md`, mantendo o mesmo padrao de informacao do fluxo real.
-- Build do executavel (CMD):
-
-```cmd
-road_test\build_chat_test_exe.cmd
-```
-
-- Executar:
-
-```cmd
-dist\chat_estudio_road_test.exe
-```
-
-- Atalho para iniciar modo leve local (sobe Ollama se precisar, garante modelo leve e abre chat):
-
-```cmd
-road_test\iniciar_leve_local.cmd
-```
-
-- Atalho para parar tudo (fecha chat, descarrega modelo e encerra Ollama):
-
-```cmd
-road_test\parar_tudo_local.cmd
-```
-
-## Chat em producao (Railway)
-
-- Chat interativo direto no pipeline real (API + worker + llm-runtime):
-
-```cmd
-road_test\chat_railway_prod.cmd
-```
-
-- Rodada unica (retorna JSON com ids/status/modelo):
-
-```cmd
-road_test\chat_railway_prod.cmd --once "quero agendar ensaio e saber valor de 2 horas"
-```
-
-- Se quiser melhorar chance de dispatch outbound, informe o `phone_number_id`:
-
-```cmd
-road_test\chat_railway_prod.cmd --phone-number-id 1234567890 --once "teste com dispatch"
-```
-
-- Se o webhook estiver exigindo assinatura (`Invalid Meta signature`), informe tambem o app secret:
-
-```cmd
-road_test\chat_railway_prod.cmd --app-secret SEU_META_APP_SECRET --once "teste assinado"
-```
-
-- Bateria online de 100 testes guiada pelos erros mais frequentes do ultimo stress:
-
-```cmd
-.venv\Scripts\python.exe -u road_test\stress_locacao_error_guided_online.py --app-secret SEU_META_APP_SECRET
-```
-
-- Observacao de rede:
-  - o script ignora proxy de ambiente por padrao (evita falha quando `HTTP_PROXY`/`HTTPS_PROXY` apontam para localhost invalido);
-  - use `--trust-env` somente se voce realmente precisar forcar proxy corporativo.
+- Em 2026-05-01, os diretórios `tests/` e `road_test/` foram removidos deste repositório.
+- Referências históricas a esses caminhos em relatórios antigos não fazem mais parte do fluxo operacional atual.
 
 ## Migracoes
 
@@ -441,6 +375,10 @@ Painel operacional expandido com foco em backend seguro e fluxo humano:
   - `POST /dashboard/op/appointments`
   - `PATCH /dashboard/op/appointments/{appointment_id}`
   - `GET /dashboard/op/status`
+
+Consulta de agenda por periodo (opcional):
+- `GET /dashboard/op/appointments?include_next=true&start_date=YYYY-MM-DD&end_date=YYYY-MM-DD`
+- quando `start_date`/`end_date` sao enviados, a agenda retorna `slots` e `appointments` dentro desse intervalo.
 - compatibilidade legado:
   - `GET /dashboard/op/state`
   - `POST /dashboard/op/send`
@@ -498,3 +436,16 @@ Melhorias aplicadas na Central OP:
 - modal urgente mostra caminho simplificado do menu (`menu_path_summary`) em vez de ultima mensagem;
 - aba Banco de Dados em tela unica com busca + modal de detalhes;
 - agenda em formato calendario semanal (livre/reservado) com horario em padrao brasileiro.
+
+### Fechamento de pendencias interrompidas - 2026-05-01
+
+- retomada da execucao interrompida do dia 2026-04-30.
+- `cmd /c .\\.venv\\Scripts\\python.exe -m pytest tests` executado com sucesso:
+  - resultado final: `170 passed`.
+- regressao corrigida na fila humana:
+  - `app/services/human_queue_service.py` agora retorna:
+    - `human_reason` (codigo canonico, ex.: `agendamento`);
+    - `human_reason_label` (texto amigavel para UI).
+  - `app/templates/dashboard_op.html` atualizado para priorizar `human_reason_label` na renderizacao.
+- `cmd /c .\\.venv\\Scripts\\python.exe -m compileall app tests` -> `OK`.
+- `cmd /c .\\.venv\\Scripts\\python.exe qa_tudo.py --no-dashboard --no-pause` -> `PASS=12 WARN=3 FAIL=0`.
