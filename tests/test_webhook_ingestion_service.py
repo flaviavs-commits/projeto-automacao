@@ -4,7 +4,9 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from app.core.database import Base
+from app.models.contact import Contact
 from app.models.conversation import Conversation
+from app.models.message import Message
 from app.services.webhook_ingestion_service import WebhookIngestionService
 
 
@@ -66,6 +68,28 @@ class WebhookIngestionServiceTests(unittest.TestCase):
         self.assertEqual(first.get("messages_created"), 1)
         self.assertEqual(second.get("messages_created"), 0)
         self.assertEqual(second.get("messages_duplicated"), 1)
+
+    def test_persist_inbound_ignores_group_jid(self) -> None:
+        payload = {
+            "platform": "whatsapp",
+            "platform_user_id": "120363111111111111@g.us",
+            "external_message_id": "MSG-GRP-1",
+            "message_type": "text",
+            "text_content": "Grupo",
+            "raw_payload": {},
+        }
+
+        result = WebhookIngestionService().persist_inbound_messages(
+            db=self.db,
+            extracted_messages=[payload],
+            audit_event_type="test_webhook",
+            audit_details={"source": "unit"},
+        )
+
+        self.assertEqual(result.get("messages_created"), 0)
+        self.assertEqual(self.db.query(Contact).count(), 0)
+        self.assertEqual(self.db.query(Conversation).count(), 0)
+        self.assertEqual(self.db.query(Message).count(), 0)
 
 
 if __name__ == "__main__":

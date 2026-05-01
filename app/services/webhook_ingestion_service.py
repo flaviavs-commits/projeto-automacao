@@ -8,6 +8,7 @@ from app.models.contact import Contact
 from app.models.conversation import Conversation
 from app.models.message import Message
 from app.services.customer_identity_service import CustomerIdentityService
+from app.services.whatsapp_jid_utils import isGroupJid
 
 
 def to_payload_dict(value: object) -> dict:
@@ -50,10 +51,13 @@ class WebhookIngestionService:
             platform_user_id = str(item.get("platform_user_id") or "").strip()
             if not platform_user_id:
                 continue
+            if platform == "whatsapp" and isGroupJid(platform_user_id):
+                continue
             alternate_platform_user_ids = [
                 str(value or "").strip()
                 for value in (item.get("alternate_platform_user_ids") or [])
                 if str(value or "").strip()
+                and not (platform == "whatsapp" and isGroupJid(str(value or "").strip()))
             ]
             preferred_phone_number = str(item.get("preferred_phone_number") or "").strip() or None
 

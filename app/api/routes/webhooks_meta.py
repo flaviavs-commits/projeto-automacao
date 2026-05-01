@@ -13,6 +13,7 @@ from app.core.logging import get_logger
 from app.core.security import safe_compare, verify_meta_signature
 from app.models.audit_log import AuditLog
 from app.schemas.webhook import MetaWebhookEnvelope
+from app.services.whatsapp_jid_utils import isGroupJid
 from app.services.webhook_ingestion_service import WebhookIngestionService, to_payload_dict
 from app.workers.tasks import process_incoming_message
 
@@ -61,6 +62,8 @@ def _extract_meta_messages(envelope_payload: dict) -> list[dict]:
                     continue
 
                 wa_id = str(message.get("from") or "").strip()
+                if isGroupJid(wa_id):
+                    continue
                 external_message_id = str(message.get("id") or "").strip()
                 message_type = str(message.get("type") or "unknown")
                 type_payload = message.get(message_type)

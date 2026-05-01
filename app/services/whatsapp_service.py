@@ -1,5 +1,6 @@
 from app.core.config import settings
 from app.services.base import BaseExternalService
+from app.services.whatsapp_jid_utils import isGroupJid
 
 
 class WhatsAppService(BaseExternalService):
@@ -166,7 +167,15 @@ class WhatsAppService(BaseExternalService):
         }
 
     def send_text_message(self, payload: dict) -> dict:
-        to = self._normalize_recipient_number(str(payload.get("to") or "").strip())
+        raw_to = str(payload.get("to") or "").strip()
+        if isGroupJid(raw_to):
+            return {
+                "status": "ignored_group_jid",
+                "service": self.service_name,
+                "action": "send_text_message",
+                "detail": "group_jid_blocked",
+            }
+        to = self._normalize_recipient_number(raw_to)
         text = str(payload.get("text") or "").strip()
         if not to or not text:
             return self.invalid_payload("send_text_message", "fields 'to' and 'text' are required")

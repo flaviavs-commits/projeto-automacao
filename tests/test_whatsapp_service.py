@@ -144,6 +144,18 @@ class WhatsAppServiceTests(unittest.TestCase):
 
         self.assertEqual(result.get("status"), "invalid_payload")
 
+    def test_send_text_message_ignores_group_jid(self) -> None:
+        with patch("app.services.base.httpx.Client.request") as request_mock:
+            result = self.service.send_text_message(
+                {
+                    "to": "120363111111111111@g.us",
+                    "text": "Ola grupo",
+                }
+            )
+
+        self.assertEqual(result.get("status"), "ignored_group_jid")
+        self.assertEqual(request_mock.call_count, 0)
+
     def test_send_text_message_maps_http_error_to_request_failed(self) -> None:
         request = httpx.Request(
             "POST",

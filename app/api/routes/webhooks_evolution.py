@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.core.logging import get_logger
 from app.schemas.webhook_evolution import EvolutionWebhookEnvelope
+from app.services.whatsapp_jid_utils import isGroupJid
 from app.services.webhook_ingestion_service import WebhookIngestionService, to_payload_dict
 from app.workers.tasks import process_incoming_message
 
@@ -158,6 +159,8 @@ def _extract_evolution_messages(envelope_payload: dict) -> list[dict]:
 
         remote_jid = str(key_payload.get("remoteJid") or item.get("remoteJid") or "").strip()
         platform_user_id = _normalize_whatsapp_jid(remote_jid)
+        if isGroupJid(platform_user_id):
+            continue
         identity_candidates = _build_whatsapp_identity_candidates(item, key_payload)
         preferred_phone_number = _extract_preferred_whatsapp_phone_number(item, key_payload)
         if preferred_phone_number:
@@ -165,6 +168,8 @@ def _extract_evolution_messages(envelope_payload: dict) -> list[dict]:
                 [preferred_phone_number, *identity_candidates]
             )
         platform_user_id = identity_candidates[0] if identity_candidates else platform_user_id
+        if isGroupJid(platform_user_id):
+            continue
         if not platform_user_id:
             continue
 

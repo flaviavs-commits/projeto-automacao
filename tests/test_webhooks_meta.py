@@ -51,6 +51,33 @@ class MetaWebhookExtractionTests(unittest.TestCase):
         self.assertEqual(extracted[0].get("platform"), "facebook")
         self.assertEqual(extracted[0].get("platform_user_id"), "42")
 
+    def test_ignores_whatsapp_group_jid(self) -> None:
+        payload = {
+            "object": "whatsapp_business_account",
+            "entry": [
+                {
+                    "changes": [
+                        {
+                            "value": {
+                                "messages": [
+                                    {
+                                        "id": "wamid.group",
+                                        "from": "120363111111111111@g.us",
+                                        "type": "text",
+                                        "text": {"body": "Mensagem grupo"},
+                                    }
+                                ],
+                                "contacts": [],
+                            }
+                        }
+                    ]
+                }
+            ],
+        }
+
+        extracted = _extract_meta_messages(payload)
+        self.assertEqual(extracted, [])
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -140,6 +140,24 @@ class EvolutionWebhookExtractionTests(unittest.TestCase):
         self.assertEqual(extracted[0].get("media_url"), "https://cdn.example.com/img-1.jpg")
         self.assertIsNone(extracted[0].get("text_content"))
 
+    def test_extract_messages_ignores_group_jid(self) -> None:
+        envelope = EvolutionWebhookEnvelope(
+            event="messages.upsert",
+            data={
+                "key": {
+                    "id": "GRP-1",
+                    "remoteJid": "120363111111111111@g.us",
+                    "fromMe": False,
+                },
+                "message": {
+                    "conversation": "Mensagem no grupo",
+                },
+            },
+        )
+
+        extracted = _extract_evolution_messages(envelope.model_dump(mode="json"))
+        self.assertEqual(extracted, [])
+
 
 if __name__ == "__main__":
     unittest.main()

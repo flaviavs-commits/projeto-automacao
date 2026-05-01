@@ -26,6 +26,7 @@ from app.services.memory_service import MemoryService
 from app.services.routing_service import RoutingService
 from app.services.tiktok_service import TikTokService
 from app.services.transcription_service import TranscriptionService
+from app.services.whatsapp_jid_utils import isGroupJid
 from app.services.whatsapp_service import WhatsAppService
 from app.services.youtube_service import YouTubeService
 from app.workers.celery_app import celery_app
@@ -104,6 +105,33 @@ def _build_llm_disabled_fallback_reply(source_text: str) -> str:
         "Recebi sua mensagem e ja registrei seu atendimento. "
         "Se quiser, ja posso te orientar para agendamento no site: https://www.fcvip.com.br/formulario"
     )
+
+
+def _extract_group_candidate_from_message(message: Message | None) -> str:
+    if message is None or not isinstance(message.raw_payload, dict):
+        return ""
+    raw_payload = message.raw_payload
+    candidates = [
+        raw_payload.get("_resolved_platform_user_id"),
+        raw_payload.get("from"),
+        raw_payload.get("remoteJid"),
+    ]
+    key_payload = raw_payload.get("key")
+    if isinstance(key_payload, dict):
+        candidates.extend(
+            [
+                key_payload.get("remoteJid"),
+                key_payload.get("participant"),
+            ]
+        )
+    sender_payload = raw_payload.get("sender")
+    if isinstance(sender_payload, dict):
+        candidates.append(sender_payload.get("id"))
+    for candidate in candidates:
+        value = str(candidate or "").strip()
+        if isGroupJid(value):
+            return value
+    return ""
 
 
 def _has_followup_already_sent(*, db, conversation_id: UUID, stage_minutes: int) -> bool:
@@ -855,6 +883,28 @@ def process_incoming_message(payload: dict) -> dict:
             if conversation is None:
                 raise ValueError(f"conversation not found: {message.conversation_id}")
             contact = db.get(Contact, conversation.contact_id)
+            group_candidate = _extract_group_candidate_from_message(message)
+            if message.platform == "whatsapp" and group_candidate:
+                db.add(
+                    AuditLog(
+                        entity_type="message",
+                        entity_id=message.id,
+                        event_type="incoming_group_jid_ignored",
+                        details={
+                            "message_id": str(message.id),
+                            "conversation_id": str(conversation.id),
+                            "group_jid": group_candidate,
+                        },
+                    )
+                )
+                db.commit()
+                _finish_job(job_id, "completed")
+                return {
+                    "task": "process_incoming_message",
+                    "status": "ignored_group_jid",
+                    "job_id": str(job_id),
+                    "message_id": str(message_id),
+                }
 
             if not bool(getattr(conversation, "chatbot_enabled", True)):
                 db.add(
@@ -1024,6 +1074,31 @@ def generate_reply(payload: dict) -> dict:
                 source_message = db.get(Message, source_message_uuid)
                 if source_message is None:
                     raise ValueError(f"source_message not found: {source_message_id}")
+
+            source_group_jid = _extract_group_candidate_from_message(source_message)
+            contact_group_jid = str(contact.phone or "").strip() if contact is not None and isGroupJid(str(contact.phone or "").strip()) else ""
+            if platform == "whatsapp" and (source_group_jid or contact_group_jid):
+                db.add(
+                    AuditLog(
+                        entity_type="conversation",
+                        entity_id=conversation.id,
+                        event_type="outbound_group_jid_blocked",
+                        details={
+                            "conversation_id": str(conversation.id),
+                            "source_message_id": source_message_id,
+                            "group_jid": source_group_jid or contact_group_jid,
+                        },
+                    )
+                )
+                db.commit()
+                _finish_job(job_id, "completed")
+                return {
+                    "task": "generate_reply",
+                    "status": "ignored_group_jid",
+                    "job_id": str(job_id),
+                    "conversation_id": str(conversation_id),
+                }
+
             context = MemoryService().build_context(str(conversation.id))
             key_memories = list(context.get("key_memories") or [])
             if contact is not None:
@@ -1548,6 +1623,26 @@ def send_follow_up(*, conversation_id: str, stage_minutes: int, reply_message_id
                 return {
                     "task": "send_follow_up",
                     "status": "ignored_missing_phone",
+                    "job_id": str(job_id),
+                    "conversation_id": conversation_id,
+                }
+            if isGroupJid(str(contact.phone or "").strip()):
+                db.add(
+                    AuditLog(
+                        entity_type="conversation",
+                        entity_id=conversation.id,
+                        event_type="follow_up_group_jid_blocked",
+                        details={
+                            "conversation_id": str(conversation.id),
+                            "group_jid": str(contact.phone or "").strip(),
+                        },
+                    )
+                )
+                db.commit()
+                _finish_job(job_id, "completed")
+                return {
+                    "task": "send_follow_up",
+                    "status": "ignored_group_jid",
                     "job_id": str(job_id),
                     "conversation_id": conversation_id,
                 }
